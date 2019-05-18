@@ -22,12 +22,13 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #include <string.h>
 #include <stdlib.h>
 #include "tests.h"
+#include "miner.h"
 
 int main(int argc, char** argv)
 {
 	if (argc < 2)
 	{
-		printf("Usage: %s --test [--platform_id N] [--device_id N] [--intensity N]\n\n", argv[0]);
+		printf("Usage: %s --mine [--validate] [--platform_id N] [--device_id N] [--intensity N]\n\n", argv[0]);
 		printf("platform_id  0 if you have only 1 OpenCL platform\n");
 		printf("device_id    0 if you have only 1 GPU\n");
 		printf("intensity    number of scratchpads to allocate, if it's not set then as many as possible will be allocated.\n\n");
@@ -38,6 +39,7 @@ int main(int argc, char** argv)
 	uint32_t platform_id = 0;
 	uint32_t device_id = 0;
 	size_t intensity = 0;
+	bool validate = false;
 
 	for (int i = 1; i < argc; ++i)
 	{
@@ -47,9 +49,13 @@ int main(int argc, char** argv)
 			device_id = atoi(argv[i + 1]);
 		else if ((strcmp(argv[i], "--intensity") == 0) && (i + 1 < argc))
 			intensity = atoi(argv[i + 1]);
+		else if (strcmp(argv[i], "--validate") == 0)
+			validate = true;
 	}
 
-	if (strcmp(argv[1], "--test") == 0)
+	if (strcmp(argv[1], "--mine") == 0)
+		return test_mining(platform_id, device_id, intensity, 0, validate) ? 0 : 1;
+	else if (strcmp(argv[1], "--test") == 0)
 		return tests(platform_id, device_id, intensity);
 
 	return 0;

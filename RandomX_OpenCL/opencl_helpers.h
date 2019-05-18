@@ -23,12 +23,16 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #include <stdint.h>
 #include <string>
 #include <map>
+#include <vector>
 #include <CL/cl.h>
+
+#define STR(X) #X
+#define STR2(X) STR(X)
 
 #define CL_CHECK_RESULT(func) \
 	if (err != CL_SUCCESS) \
 	{ \
-		std::cerr << #func##" failed: error " << err << std::endl; \
+		std::cerr << STR(func) " failed (" __FILE__ ", line " STR2(__LINE__) "): error " << err << std::endl; \
 		return false; \
 	}
 

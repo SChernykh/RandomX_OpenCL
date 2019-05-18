@@ -89,11 +89,14 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="miner.cpp" />
     <ClCompile Include="opencl_helpers.cpp" />
     <ClCompile Include="RandomX_OpenCL.cpp" />
     <ClCompile Include="tests.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="definitions.h" />
+    <ClInclude Include="miner.h" />
     <ClInclude Include="opencl_helpers.h" />
     <ClInclude Include="tests.h" />
   </ItemGroup>

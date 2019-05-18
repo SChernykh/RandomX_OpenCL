@@ -1,0 +1,303 @@
+/*
+Copyright (c) 2019 SChernykh
+
+This file is part of RandomX OpenCL.
+
+RandomX OpenCL is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+RandomX OpenCL is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+#include <algorithm>
+#include <chrono>
+#include <thread>
+#include <atomic>
+#include "miner.h"
+#include "opencl_helpers.h"
+#include "definitions.h"
+
+#include "../RandomX/src/randomx.h"
+#include "../RandomX/src/configuration.h"
+#include "../RandomX/src/common.hpp"
+
+using namespace std::chrono;
+
+bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uint32_t start_nonce, bool validate)
+{
+	std::cout << "Initializing GPU #" << device_id << " on OpenCL platform #" << platform_id << std::endl << std::endl;
+
+	OpenCLContext ctx;
+	if (!ctx.Init(platform_id, device_id,
+		{
+			AES_CL,
+			BLAKE2B_CL
+		},
+		{
+			CL_FILLAES1RX4_SCRATCHPAD,
+			CL_FILLAES1RX4_ENTROPY,
+			CL_HASHAES1RX4,
+			CL_BLAKE2B_INITIAL_HASH,
+			CL_BLAKE2B_HASH_REGISTERS_32,
+			CL_BLAKE2B_HASH_REGISTERS_64,
+			CL_BLAKE2B_512_SINGLE_BLOCK_BENCH,
+			CL_BLAKE2B_512_DOUBLE_BLOCK_BENCH
+		}))
+	{
+		return false;
+	}
+
+	if (!intensity)
+		intensity = std::min(ctx.device_max_alloc_size, ctx.device_global_mem_size) / SCRATCHPAD_SIZE;
+
+	intensity -= (intensity & 63);
+
+	const size_t dataset_size = randomx_dataset_item_count() * RANDOMX_DATASET_ITEM_SIZE;
+	DevicePtr dataset_gpu(ctx, dataset_size);
+	if (!dataset_gpu)
+	{
+		return false;
+	}
+
+	std::cout << "Allocated " << dataset_size / 1048576.0 << " MB dataset" << std::endl;
+
+	std::cout << "Initializing dataset...";
+
+	randomx_dataset *myDataset;
+	bool large_pages_available = true;
+	cl_int err;
+	{
+		const char mySeed[] = "RandomX example seed";
+
+		randomx_cache *myCache = randomx_alloc_cache((randomx_flags)(RANDOMX_FLAG_JIT));
+		randomx_init_cache(myCache, mySeed, sizeof mySeed);
+		myDataset = randomx_alloc_dataset(RANDOMX_FLAG_LARGE_PAGES);
+		if (!myDataset)
+		{
+			std::cout << "\nCouldn't allocate dataset using large pages" << std::endl;
+			myDataset = randomx_alloc_dataset(RANDOMX_FLAG_DEFAULT);
+			large_pages_available = false;
+		}
+
+		auto t1 = high_resolution_clock::now();
+
+		std::vector<std::thread> threads;
+		for (uint32_t i = 0, n = std::thread::hardware_concurrency(); i < n; ++i)
+			threads.emplace_back([myDataset, myCache, i, n]() { randomx_init_dataset(myDataset, myCache, (i * randomx_dataset_item_count()) / n, ((i + 1) * randomx_dataset_item_count()) / n - (i * randomx_dataset_item_count()) / n); });
+
+		for (auto& t : threads)
+			t.join();
+
+		randomx_release_cache(myCache);
+
+		CL_CHECKED_CALL(clEnqueueWriteBuffer, ctx.queue, dataset_gpu, CL_TRUE, 0, dataset_size, randomx_get_dataset_memory(myDataset), 0, nullptr, nullptr);
+
+		std::cout << "done in " << (duration_cast<nanoseconds>(high_resolution_clock::now() - t1).count() / 1e9) << " seconds" << std::endl;
+	}
+
+	DevicePtr scratchpads_gpu(ctx, intensity * SCRATCHPAD_SIZE);
+	if (!scratchpads_gpu)
+	{
+		return false;
+	}
+	std::cout << "Allocated " << intensity << " scratchpads" << std::endl << std::endl;
+
+	DevicePtr hashes_gpu(ctx, intensity * INITIAL_HASH_SIZE);
+	if (!hashes_gpu)
+	{
+		return false;
+	}
+
+	DevicePtr entropy_gpu(ctx, intensity * ENTROPY_SIZE);
+	if (!entropy_gpu)
+	{
+		return false;
+	}
+
+	DevicePtr registers_gpu(ctx, intensity * REGISTERS_SIZE);
+	if (!registers_gpu)
+	{
+		return false;
+	}
+
+	DevicePtr rounding_gpu(ctx, intensity * sizeof(uint32_t));
+	if (!rounding_gpu)
+	{
+		return false;
+	}
+
+	DevicePtr blocktemplate_gpu(ctx, intensity * sizeof(blockTemplate));
+	if (!blocktemplate_gpu)
+	{
+		return false;
+	}
+
+	CL_CHECKED_CALL(clEnqueueWriteBuffer, ctx.queue, blocktemplate_gpu, CL_TRUE, 0, sizeof(blockTemplate), blockTemplate, 0, nullptr, nullptr);
+
+	auto prev_time = high_resolution_clock::now();
+
+	std::vector<uint8_t> hashes, hashes_check;
+	hashes.resize(intensity * 32);
+	hashes_check.resize(intensity * 32);
+
+	std::vector<std::thread> threads;
+	std::atomic<uint32_t> nonce_counter;
+	bool cpu_limited = false;
+
+	uint32_t failed_nonces = 0;
+
+	cl_kernel kernel_blake2b_initial_hash = ctx.kernels[CL_BLAKE2B_INITIAL_HASH];
+	if (!clSetKernelArgs(kernel_blake2b_initial_hash, hashes_gpu, blocktemplate_gpu, 0U))
+	{
+		return false;
+	}
+
+	cl_kernel kernel_fillaes1rx4_scratchpad = ctx.kernels[CL_FILLAES1RX4_SCRATCHPAD];
+	if (!clSetKernelArgs(kernel_fillaes1rx4_scratchpad, hashes_gpu, scratchpads_gpu, static_cast<uint32_t>(intensity)))
+	{
+		return false;
+	}
+
+	cl_kernel kernel_fillaes1rx4_entropy = ctx.kernels[CL_FILLAES1RX4_ENTROPY];
+	if (!clSetKernelArgs(kernel_fillaes1rx4_entropy, hashes_gpu, entropy_gpu, static_cast<uint32_t>(intensity)))
+	{
+		return false;
+	}
+
+	cl_kernel kernel_hashaes1rx4 = ctx.kernels[CL_HASHAES1RX4];
+	if (!clSetKernelArgs(kernel_hashaes1rx4, scratchpads_gpu, registers_gpu, static_cast<uint32_t>(intensity)))
+	{
+		return false;
+	}
+
+	cl_kernel kernel_blake2b_hash_registers_32 = ctx.kernels[CL_BLAKE2B_HASH_REGISTERS_32];
+	if (!clSetKernelArgs(kernel_blake2b_hash_registers_32, hashes_gpu, registers_gpu))
+	{
+		return false;
+	}
+
+	cl_kernel kernel_blake2b_hash_registers_64 = ctx.kernels[CL_BLAKE2B_HASH_REGISTERS_64];
+	if (!clSetKernelArgs(kernel_blake2b_hash_registers_64, hashes_gpu, registers_gpu))
+	{
+		return false;
+	}
+
+	const size_t global_work_size = intensity;
+	const size_t global_work_size4 = intensity * 4;
+	const size_t local_work_size = 64;
+	const uint32_t zero = 0;
+
+	for (size_t nonce = start_nonce, k = 0; nonce < 0xFFFFFFFFUL; nonce += intensity, ++k)
+	{
+		auto validation_thread = [&nonce_counter, myDataset, &hashes_check, intensity, nonce, large_pages_available]() {
+			randomx_vm *myMachine = randomx_create_vm((randomx_flags)(RANDOMX_FLAG_FULL_MEM | RANDOMX_FLAG_JIT | RANDOMX_FLAG_HARD_AES | (large_pages_available ? RANDOMX_FLAG_LARGE_PAGES : 0)), nullptr, myDataset);
+
+			uint8_t buf[sizeof(blockTemplate)];
+			memcpy(buf, blockTemplate, sizeof(buf));
+
+			for (;;)
+			{
+				const uint32_t i = nonce_counter.fetch_add(1);
+				if (i >= intensity)
+					break;
+
+				*(uint32_t*)(buf + 39) = static_cast<uint32_t>(nonce + i);
+
+				randomx_calculate_hash(myMachine, buf, sizeof(buf), (hashes_check.data() + i * 32));
+			}
+			randomx_destroy_vm(myMachine);
+		};
+
+		if (validate)
+		{
+			nonce_counter = 0;
+
+			const uint32_t n = std::max(std::thread::hardware_concurrency() / 2, 1U);
+
+			threads.clear();
+			for (uint32_t i = 0; i < n; ++i)
+				threads.emplace_back(validation_thread);
+		}
+
+		auto cur_time = high_resolution_clock::now();
+		if (k > 0)
+		{
+			const double dt = duration_cast<nanoseconds>(cur_time - prev_time).count() / 1e9;
+
+			if (validate)
+			{
+				const size_t n = nonce - start_nonce;
+				printf("%zu (%.3f%%) hashes validated successfully, %u (%.3f%%) hashes failed, %.0f h/s%s\n",
+					n - failed_nonces,
+					static_cast<double>(n - failed_nonces) / n * 100.0,
+					failed_nonces,
+					static_cast<double>(failed_nonces) / n * 100.0,
+					intensity / dt,
+					cpu_limited ? ", limited by CPU" : "                "
+				);
+			}
+			else
+			{
+				printf("%.0f h/s\t\r", intensity / dt);
+			}
+		}
+		prev_time = cur_time;
+
+		CL_CHECKED_CALL(clSetKernelArg, kernel_blake2b_initial_hash, 2, sizeof(uint32_t), &nonce);
+		CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_blake2b_initial_hash, 1, nullptr, &global_work_size, &local_work_size, 0, nullptr, nullptr);
+		CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_fillaes1rx4_scratchpad, 1, nullptr, &global_work_size4, &local_work_size, 0, nullptr, nullptr);
+		CL_CHECKED_CALL(clEnqueueFillBuffer, ctx.queue, rounding_gpu, &zero, sizeof(zero), 0, intensity * sizeof(uint32_t), 0, nullptr, nullptr);
+
+		for (size_t i = 0; i < RANDOMX_PROGRAM_COUNT; ++i)
+		{
+			CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_fillaes1rx4_entropy, 1, nullptr, &global_work_size4, &local_work_size, 0, nullptr, nullptr);
+
+			// TODO: compile program
+			// TODO: execute program
+
+			if (i == RANDOMX_PROGRAM_COUNT - 1)
+			{
+				CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_hashaes1rx4, 1, nullptr, &global_work_size4, &local_work_size, 0, nullptr, nullptr);
+				CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_blake2b_hash_registers_32, 1, nullptr, &global_work_size, &local_work_size, 0, nullptr, nullptr);
+			}
+			else
+			{
+				CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_blake2b_hash_registers_64, 1, nullptr, &global_work_size, &local_work_size, 0, nullptr, nullptr);
+			}
+		}
+
+		CL_CHECKED_CALL(clFinish, ctx.queue);
+
+		if (validate)
+		{
+			CL_CHECKED_CALL(clEnqueueReadBuffer, ctx.queue, hashes_gpu, CL_TRUE, 0, intensity * 32, hashes.data(), 0, nullptr, nullptr);
+
+			cpu_limited = nonce_counter.load() < intensity;
+
+			for (auto& thread : threads)
+				thread.join();
+
+			if (memcmp(hashes.data(), hashes_check.data(), intensity * 32) != 0)
+			{
+				for (uint32_t i = 0; i < intensity * 32; i += 32)
+				{
+					if (memcmp(hashes.data() + i, hashes_check.data() + i, 32))
+					{
+						std::cerr << "CPU validation error, failing nonce = " << (nonce + i / 32) << std::endl;
+						++failed_nonces;
+					}
+				}
+			}
+		}
+	}
+
+	return true;
+}
