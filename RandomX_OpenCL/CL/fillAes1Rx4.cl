@@ -50,7 +50,7 @@ __kernel void fillAes1Rx4_name(__global void* state, __global void* out, uint ba
 	const __local uint* const t2 = (sub & 1) ? (T + 512) : (T + 1536);
 	const __local uint* const t3 = (sub & 1) ? (T + 768) : (T + 1280);
 
-	#pragma unroll(((outputSize % 512) == 0) ? 8 : 2)
+	#pragma unroll(unroll_factor)
 	for (uint i = 0; i < outputSize / sizeof(uint4); i += 4, p += strided ? stride_size : 4)
 	{
 		uint y[4];

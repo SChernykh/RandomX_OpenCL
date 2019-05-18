@@ -552,7 +552,9 @@ uint get_byte(uint a, uint start_bit) { return (a >> start_bit) & 0xFF; }
 #define fillAes1Rx4_name fillAes1Rx4_scratchpad
 #define outputSize 2097152
 #define strided 1
+#define unroll_factor 8
 	#include "fillAes1Rx4.cl"
+#undef unroll_factor
 #undef strided
 #undef outputSize
 #undef fillAes1Rx4_name
@@ -560,7 +562,9 @@ uint get_byte(uint a, uint start_bit) { return (a >> start_bit) & 0xFF; }
 #define fillAes1Rx4_name fillAes1Rx4_entropy
 #define outputSize (128 + 2048)
 #define strided 0
+#define unroll_factor 2
 	#include "fillAes1Rx4.cl"
+#undef unroll_factor
 #undef strided
 #undef outputSize
 #undef fillAes1Rx4_name
