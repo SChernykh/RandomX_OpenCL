@@ -87,17 +87,14 @@ __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratch
 	#pragma unroll(1)
 	for (uint ic = 0; ic < RANDOMX_PROGRAM_ITERATIONS; ++ic)
 	{
-		__global ulong* p0;
-		__global ulong* p1;
-
 		const uint2 spMix = as_uint2(R[readReg0] ^ R[readReg1]);
 		spAddr0 ^= spMix.x;
 		spAddr0 &= ScratchpadL3Mask64;
 		spAddr1 ^= spMix.y;
 		spAddr1 &= ScratchpadL3Mask64;
 
-		p0 = (__global ulong*)(scratchpad + spAddr0 * batch_size + sub * 8);
-		p1 = (__global ulong*)(scratchpad + spAddr1 * batch_size + sub * 8);
+		__global ulong* p0 = (__global ulong*)(scratchpad + (spAddr0 * batch_size + sub * 8));
+		__global ulong* p1 = (__global ulong*)(scratchpad + (spAddr1 * batch_size + sub * 8));
 
 		R[sub] ^= *p0;
 
@@ -105,7 +102,18 @@ __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratch
 		fe[0] = load_F_E_groups(q.x, andMask, orMask1);
 		fe[1] = load_F_E_groups(q.y, andMask, orMask2);
 
-		// TODO: call JIT code here
+		barrier(CLK_LOCAL_MEM_FENCE);
+
+		// TODO:
+		//
+		// 1) Compile with atomic_inc uncommented
+		// 2) clrxdisasm -C randomx.bin > randomx.asm
+		// 3) Replace GLOBAL_ATOMIC_ADD in randomx.asm with a call to JIT code (S_SWAPPC_B64 to call, S_SETPC_B64 to return)
+		// 4) clrxasm randomx.asm -o randomx.bin
+		// 5) ???
+		// 6) PROFIT!!!
+
+		//atomic_inc(programs);
 
 		mx ^= R[readReg2] ^ R[readReg3];
 		mx &= CacheLineAlignMask;

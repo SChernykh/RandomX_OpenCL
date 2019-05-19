@@ -174,16 +174,19 @@ bool OpenCLContext::Compile(const char* binary_name, const std::initializer_list
 	}
 	std::cout << "done" << std::endl;
 
-	size_t bin_size;
-	CL_CHECKED_CALL(clGetProgramInfo, program, CL_PROGRAM_BINARY_SIZES, sizeof(bin_size), &bin_size, nullptr);
+	if (!use_compiled)
+	{
+		size_t bin_size;
+		CL_CHECKED_CALL(clGetProgramInfo, program, CL_PROGRAM_BINARY_SIZES, sizeof(bin_size), &bin_size, nullptr);
 
-	std::vector<char> binary_data(bin_size);
-	char* tmp[1] = { binary_data.data() };
-	CL_CHECKED_CALL(clGetProgramInfo, program, CL_PROGRAM_BINARIES, sizeof(tmp), tmp, NULL);
+		std::vector<char> binary_data(bin_size);
+		char* tmp[1] = { binary_data.data() };
+		CL_CHECKED_CALL(clGetProgramInfo, program, CL_PROGRAM_BINARIES, sizeof(tmp), tmp, NULL);
 
-	std::ofstream f(binary_name, std::ios::binary);
-	f.write(tmp[0], bin_size);
-	f.close();
+		std::ofstream f(binary_name, std::ios::binary);
+		f.write(tmp[0], bin_size);
+		f.close();
+	}
 
 	for (const std::string& name : kernel_names)
 	{

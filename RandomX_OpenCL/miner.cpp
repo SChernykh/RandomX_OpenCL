@@ -84,10 +84,8 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 	bool large_pages_available = true;
 	cl_int err;
 	{
-		const char mySeed[] = "RandomX example seed";
+		auto t1 = high_resolution_clock::now();
 
-		randomx_cache *myCache = randomx_alloc_cache((randomx_flags)(RANDOMX_FLAG_JIT));
-		randomx_init_cache(myCache, mySeed, sizeof(mySeed));
 		myDataset = randomx_alloc_dataset(RANDOMX_FLAG_LARGE_PAGES);
 		if (!myDataset)
 		{
@@ -96,16 +94,44 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 			large_pages_available = false;
 		}
 
-		auto t1 = high_resolution_clock::now();
+		char* dataset_memory = reinterpret_cast<char*>(randomx_get_dataset_memory(myDataset));
+		bool read_ok = false;
 
-		std::vector<std::thread> threads;
-		for (uint32_t i = 0, n = std::thread::hardware_concurrency(); i < n; ++i)
-			threads.emplace_back([myDataset, myCache, i, n]() { randomx_init_dataset(myDataset, myCache, (i * randomx_dataset_item_count()) / n, ((i + 1) * randomx_dataset_item_count()) / n - (i * randomx_dataset_item_count()) / n); });
+		FILE* fp;
+		if (fopen_s(&fp, "dataset.bin", "rb") == 0)
+		{
+			read_ok = (fread(dataset_memory, 1, randomx::DatasetSize, fp) == randomx::DatasetSize);
+			fclose(fp);
+		}
 
-		for (auto& t : threads)
-			t.join();
+		if (!read_ok)
+		{
+			randomx_cache *myCache = randomx_alloc_cache((randomx_flags)(RANDOMX_FLAG_JIT | (large_pages_available ? RANDOMX_FLAG_LARGE_PAGES : 0)));
+			if (!myCache)
+			{
+				std::cout << "\nCouldn't allocate cache using large pages" << std::endl;
+				myCache = randomx_alloc_cache(RANDOMX_FLAG_JIT);
+				large_pages_available = false;
+			}
 
-		randomx_release_cache(myCache);
+			const char mySeed[] = "RandomX example seed";
+			randomx_init_cache(myCache, mySeed, sizeof(mySeed));
+
+			std::vector<std::thread> threads;
+			for (uint32_t i = 0, n = std::thread::hardware_concurrency(); i < n; ++i)
+				threads.emplace_back([myDataset, myCache, i, n]() { randomx_init_dataset(myDataset, myCache, (i * randomx_dataset_item_count()) / n, ((i + 1) * randomx_dataset_item_count()) / n - (i * randomx_dataset_item_count()) / n); });
+
+			for (auto& t : threads)
+				t.join();
+
+			randomx_release_cache(myCache);
+
+			if (fopen_s(&fp, "dataset.bin", "wb") == 0)
+			{
+				fwrite(dataset_memory, 1, randomx::DatasetSize, fp);
+				fclose(fp);
+			}
+		}
 
 		CL_CHECKED_CALL(clEnqueueWriteBuffer, ctx.queue, dataset_gpu, CL_TRUE, 0, dataset_size, randomx_get_dataset_memory(myDataset), 0, nullptr, nullptr);
 
