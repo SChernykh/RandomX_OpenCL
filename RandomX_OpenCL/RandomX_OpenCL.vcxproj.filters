@@ -54,5 +54,11 @@
     <None Include="CL\fillAes1Rx4.cl">
       <Filter>Source Files\CL</Filter>
     </None>
+    <None Include="CL\randomx_init.cl">
+      <Filter>Source Files\CL</Filter>
+    </None>
+    <None Include="CL\randomx_run.cl">
+      <Filter>Source Files\CL</Filter>
+    </None>
   </ItemGroup>
 </Project>

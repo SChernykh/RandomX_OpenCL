@@ -21,6 +21,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #include <chrono>
 #include <thread>
 #include <atomic>
+#include <sstream>
 #include "miner.h"
 #include "opencl_helpers.h"
 #include "definitions.h"
@@ -36,10 +37,16 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 	std::cout << "Initializing GPU #" << device_id << " on OpenCL platform #" << platform_id << std::endl << std::endl;
 
 	OpenCLContext ctx;
-	if (!ctx.Init(platform_id, device_id,
+	if (!ctx.Init(platform_id, device_id))
+	{
+		return false;
+	}
+
+	if (!ctx.Compile("base_kernels.bin",
 		{
 			AES_CL,
-			BLAKE2B_CL
+			BLAKE2B_CL,
+			RANDOMX_INIT_CL
 		},
 		{
 			CL_FILLAES1RX4_SCRATCHPAD,
@@ -48,9 +55,16 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 			CL_BLAKE2B_INITIAL_HASH,
 			CL_BLAKE2B_HASH_REGISTERS_32,
 			CL_BLAKE2B_HASH_REGISTERS_64,
-			CL_BLAKE2B_512_SINGLE_BLOCK_BENCH,
-			CL_BLAKE2B_512_DOUBLE_BLOCK_BENCH
-		}))
+			CL_RANDOMX_INIT
+		},
+		"", true))
+	{
+		return false;
+	}
+
+	std::stringstream options;
+	options << "-D RANDOMX_PROGRAM_ITERATIONS=" << RANDOMX_PROGRAM_ITERATIONS;
+	if (!ctx.Compile("randomx.bin", { RANDOMX_RUN_CL }, { CL_RANDOMX_RUN }, options.str()))
 	{
 		return false;
 	}
@@ -61,14 +75,9 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 	intensity -= (intensity & 63);
 
 	const size_t dataset_size = randomx_dataset_item_count() * RANDOMX_DATASET_ITEM_SIZE;
-	DevicePtr dataset_gpu(ctx, dataset_size);
-	if (!dataset_gpu)
-	{
-		return false;
-	}
+	ALLOCATE_DEVICE_MEMORY(dataset_gpu, ctx, dataset_size);
 
-	std::cout << "Allocated " << dataset_size / 1048576.0 << " MB dataset" << std::endl;
-
+	std::cout << "Allocated " << (dataset_size / 1048576.0) << " MB dataset" << std::endl;
 	std::cout << "Initializing dataset...";
 
 	randomx_dataset *myDataset;
@@ -78,7 +87,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 		const char mySeed[] = "RandomX example seed";
 
 		randomx_cache *myCache = randomx_alloc_cache((randomx_flags)(RANDOMX_FLAG_JIT));
-		randomx_init_cache(myCache, mySeed, sizeof mySeed);
+		randomx_init_cache(myCache, mySeed, sizeof(mySeed));
 		myDataset = randomx_alloc_dataset(RANDOMX_FLAG_LARGE_PAGES);
 		if (!myDataset)
 		{
@@ -103,42 +112,15 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 		std::cout << "done in " << (duration_cast<nanoseconds>(high_resolution_clock::now() - t1).count() / 1e9) << " seconds" << std::endl;
 	}
 
-	DevicePtr scratchpads_gpu(ctx, intensity * SCRATCHPAD_SIZE);
-	if (!scratchpads_gpu)
-	{
-		return false;
-	}
-	std::cout << "Allocated " << intensity << " scratchpads" << std::endl << std::endl;
+	ALLOCATE_DEVICE_MEMORY(scratchpads_gpu, ctx, intensity * SCRATCHPAD_SIZE);
+	std::cout << "Allocated " << intensity << " scratchpads\n" << std::endl;
 
-	DevicePtr hashes_gpu(ctx, intensity * INITIAL_HASH_SIZE);
-	if (!hashes_gpu)
-	{
-		return false;
-	}
-
-	DevicePtr entropy_gpu(ctx, intensity * ENTROPY_SIZE);
-	if (!entropy_gpu)
-	{
-		return false;
-	}
-
-	DevicePtr registers_gpu(ctx, intensity * REGISTERS_SIZE);
-	if (!registers_gpu)
-	{
-		return false;
-	}
-
-	DevicePtr rounding_gpu(ctx, intensity * sizeof(uint32_t));
-	if (!rounding_gpu)
-	{
-		return false;
-	}
-
-	DevicePtr blocktemplate_gpu(ctx, intensity * sizeof(blockTemplate));
-	if (!blocktemplate_gpu)
-	{
-		return false;
-	}
+	ALLOCATE_DEVICE_MEMORY(hashes_gpu, ctx, intensity * INITIAL_HASH_SIZE);
+	ALLOCATE_DEVICE_MEMORY(entropy_gpu, ctx, intensity * ENTROPY_SIZE);
+	ALLOCATE_DEVICE_MEMORY(registers_gpu, ctx, intensity * REGISTERS_SIZE);
+	ALLOCATE_DEVICE_MEMORY(rounding_gpu, ctx, intensity * sizeof(uint32_t));
+	ALLOCATE_DEVICE_MEMORY(blocktemplate_gpu, ctx, intensity * sizeof(blockTemplate));
+	ALLOCATE_DEVICE_MEMORY(compiled_programs_gpu, ctx, intensity * COMPILED_PROGRAM_SIZE);
 
 	CL_CHECKED_CALL(clEnqueueWriteBuffer, ctx.queue, blocktemplate_gpu, CL_TRUE, 0, sizeof(blockTemplate), blockTemplate, 0, nullptr, nullptr);
 
@@ -172,6 +154,18 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 		return false;
 	}
 
+	cl_kernel kernel_randomx_init = ctx.kernels[CL_RANDOMX_INIT];
+	if (!clSetKernelArgs(kernel_randomx_init, entropy_gpu, registers_gpu, compiled_programs_gpu, static_cast<uint32_t>(intensity)))
+	{
+		return false;
+	}
+
+	cl_kernel kernel_randomx_run = ctx.kernels[CL_RANDOMX_RUN];
+	if (!clSetKernelArgs(kernel_randomx_run, dataset_gpu, scratchpads_gpu, registers_gpu, rounding_gpu, compiled_programs_gpu, static_cast<uint32_t>(intensity)))
+	{
+		return false;
+	}
+
 	cl_kernel kernel_hashaes1rx4 = ctx.kernels[CL_HASHAES1RX4];
 	if (!clSetKernelArgs(kernel_hashaes1rx4, scratchpads_gpu, registers_gpu, static_cast<uint32_t>(intensity)))
 	{
@@ -192,6 +186,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 
 	const size_t global_work_size = intensity;
 	const size_t global_work_size4 = intensity * 4;
+	const size_t global_work_size16 = intensity * 16;
 	const size_t local_work_size = 64;
 	const uint32_t zero = 0;
 
@@ -259,9 +254,8 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 		for (size_t i = 0; i < RANDOMX_PROGRAM_COUNT; ++i)
 		{
 			CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_fillaes1rx4_entropy, 1, nullptr, &global_work_size4, &local_work_size, 0, nullptr, nullptr);
-
-			// TODO: compile program
-			// TODO: execute program
+			CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_init, 1, nullptr, &global_work_size, &local_work_size, 0, nullptr, nullptr);
+			CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_run, 1, nullptr, &global_work_size16, &local_work_size, 0, nullptr, nullptr);
 
 			if (i == RANDOMX_PROGRAM_COUNT - 1)
 			{

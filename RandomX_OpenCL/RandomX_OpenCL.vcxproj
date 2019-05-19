@@ -110,6 +110,8 @@
     <None Include="CL\blake2b.cl" />
     <None Include="CL\blake2b_double_block.cl" />
     <None Include="CL\fillAes1Rx4.cl" />
+    <None Include="CL\randomx_init.cl" />
+    <None Include="CL\randomx_run.cl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

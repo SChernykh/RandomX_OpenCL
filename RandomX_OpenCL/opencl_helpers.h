@@ -45,14 +45,17 @@ struct OpenCLContext
 	OpenCLContext()
 		: context(0)
 		, queue(0)
-		, program(0)
 	{}
 
-	bool Init(uint32_t platform_id, uint32_t device_id, const std::initializer_list<std::string>& source_files, const std::initializer_list<std::string>& kernel_names);
+	~OpenCLContext();
 
+	bool Init(uint32_t platform_id, uint32_t device_id);
+	bool Compile(const char* binary_name, const std::initializer_list<std::string>& source_files, const std::initializer_list<std::string>& kernel_names, const std::string& options = std::string(), bool use_compiled = false);
+
+	cl_device_id device;
 	cl_context context;
 	cl_command_queue queue;
-	cl_program program;
+	std::map<std::string, cl_kernel> kernels;
 
 	std::vector<char> device_name;
 	cl_ulong device_global_mem_size;
@@ -64,20 +67,22 @@ struct OpenCLContext
 	std::vector<char> device_version;
 	std::vector<char> device_driver_version;
 	std::vector<char> device_extensions;
-
-	std::map<std::string, cl_kernel> kernels;
 };
 
 struct DevicePtr
 {
-	DevicePtr(const OpenCLContext& ctx, size_t size) : p(static_cast<cl_mem>(0)) { Init(ctx, size); }
+	DevicePtr(const OpenCLContext& ctx, size_t size, const char* debug_str) : p(static_cast<cl_mem>(0)) { Init(ctx, size, debug_str); }
 	~DevicePtr() { if (p) clReleaseMemObject(p); }
 
-	bool Init(const OpenCLContext& ctx, size_t size)
+	bool Init(const OpenCLContext& ctx, size_t size, const char* debug_str)
 	{
 		cl_int err;
 		p = clCreateBuffer(ctx.context, CL_MEM_READ_WRITE, size, nullptr, &err);
-		CL_CHECK_RESULT(clCreateBuffer);
+		if (err != CL_SUCCESS)
+		{
+			std::cerr << "clCreateBuffer failed (" << debug_str << "): error " << err << std::endl;
+			return false;
+		}
 		return true;
 	}
 
@@ -88,6 +93,8 @@ private:
 };
 
 static_assert(sizeof(DevicePtr) == sizeof(cl_mem), "Invalid DevicePtr struct, check your compiler options");
+
+#define ALLOCATE_DEVICE_MEMORY(p, ctx, size) DevicePtr p(ctx, size, #p ", " __FILE__ ", line " STR2(__LINE__)); if (!p) return false;
 
 template<cl_uint> bool _clSetKernelArg(cl_kernel) { return true; }
 

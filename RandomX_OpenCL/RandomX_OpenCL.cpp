@@ -56,7 +56,7 @@ int main(int argc, char** argv)
 	if (strcmp(argv[1], "--mine") == 0)
 		return test_mining(platform_id, device_id, intensity, 0, validate) ? 0 : 1;
 	else if (strcmp(argv[1], "--test") == 0)
-		return tests(platform_id, device_id, intensity);
+		return tests(platform_id, device_id, intensity) ? 0 : 1;
 
 	return 0;
 }

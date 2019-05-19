@@ -25,6 +25,7 @@ static constexpr int SCRATCHPAD_SIZE = 1 << 21;
 static constexpr int ENTROPY_SIZE = 128 + 2048;
 static constexpr int REGISTERS_SIZE = 256;
 static constexpr int INITIAL_HASH_SIZE = 64;
+static constexpr int COMPILED_PROGRAM_SIZE = 16384;
 
 static const std::string AES_CL = "CL/aes.cl";
 static const std::string CL_FILLAES1RX4_SCRATCHPAD = "fillAes1Rx4_scratchpad";
@@ -37,6 +38,12 @@ static const std::string CL_BLAKE2B_HASH_REGISTERS_32 = "blake2b_hash_registers_
 static const std::string CL_BLAKE2B_HASH_REGISTERS_64 = "blake2b_hash_registers_64";
 static const std::string CL_BLAKE2B_512_SINGLE_BLOCK_BENCH = "blake2b_512_single_block_bench";
 static const std::string CL_BLAKE2B_512_DOUBLE_BLOCK_BENCH = "blake2b_512_double_block_bench";
+
+static const std::string RANDOMX_INIT_CL = "CL/randomx_init.cl";
+static const std::string CL_RANDOMX_INIT = "randomx_init";
+
+static const std::string RANDOMX_RUN_CL = "CL/randomx_run.cl";
+static const std::string CL_RANDOMX_RUN = "randomx_run";
 
 static uint8_t blockTemplate[] = {
 		0x07, 0x07, 0xf7, 0xa4, 0xf0, 0xd6, 0x05, 0xb3, 0x03, 0x26, 0x08, 0x16, 0xba, 0x3f, 0x10, 0x90, 0x2e, 0x1a, 0x14,

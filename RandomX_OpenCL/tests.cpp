@@ -40,12 +40,17 @@ constexpr size_t BLAKE2B_STEP = 1 << 28;
 
 using namespace std::chrono;
 
-int tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
+bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 {
 	std::cout << "Initializing GPU #" << device_id << " on OpenCL platform #" << platform_id << std::endl << std::endl;
 
 	OpenCLContext ctx;
-	if (!ctx.Init(platform_id, device_id,
+	if (!ctx.Init(platform_id, device_id))
+	{
+		return false;
+	}
+
+	if (!ctx.Compile("base_kernels.bin",
 		{
 			AES_CL,
 			BLAKE2B_CL
@@ -61,7 +66,7 @@ int tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 			CL_BLAKE2B_512_DOUBLE_BLOCK_BENCH
 		}))
 	{
-		return 1;
+		return false;
 	}
 
 	if (!intensity)
@@ -69,52 +74,27 @@ int tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 
 	intensity -= (intensity & 63);
 
-	DevicePtr scratchpads_gpu(ctx, intensity * SCRATCHPAD_SIZE);
-	if (!scratchpads_gpu)
-	{
-		return 1;
-	}
+	ALLOCATE_DEVICE_MEMORY(scratchpads_gpu, ctx, intensity * SCRATCHPAD_SIZE);
 	std::cout << "Allocated " << intensity << " scratchpads" << std::endl << std::endl;
 
-	DevicePtr entropy_gpu(ctx, intensity * ENTROPY_SIZE);
-	if (!entropy_gpu)
-	{
-		return 1;
-	}
-
-	DevicePtr registers_gpu(ctx, intensity * REGISTERS_SIZE);
-	if (!registers_gpu)
-	{
-		return 1;
-	}
+	ALLOCATE_DEVICE_MEMORY(entropy_gpu, ctx, intensity * ENTROPY_SIZE);
+	ALLOCATE_DEVICE_MEMORY(registers_gpu, ctx, intensity * REGISTERS_SIZE);
 
 	uint32_t zero = 0;
 	cl_int err;
 	CL_CHECKED_CALL(clEnqueueFillBuffer, ctx.queue, registers_gpu, &zero, sizeof(zero), 0, intensity * REGISTERS_SIZE, 0, nullptr, nullptr);
 
-	DevicePtr hash_gpu(ctx, intensity * INITIAL_HASH_SIZE);
-	if (!hash_gpu)
-	{
-		return 1;
-	}
-
-	DevicePtr blockTemplate_gpu(ctx, sizeof(blockTemplate));
-	if (!blockTemplate_gpu)
-	{
-		return 1;
-	}
+	ALLOCATE_DEVICE_MEMORY(hash_gpu, ctx, intensity * INITIAL_HASH_SIZE);
+	ALLOCATE_DEVICE_MEMORY(blockTemplate_gpu, ctx, sizeof(blockTemplate));
 
 	CL_CHECKED_CALL(clEnqueueWriteBuffer, ctx.queue, blockTemplate_gpu, CL_FALSE, 0, sizeof(blockTemplate), blockTemplate, 0, nullptr, nullptr);
 
-	DevicePtr nonce_gpu(ctx, sizeof(uint64_t));
-	if (!nonce_gpu) {
-		return 1;
-	}
+	ALLOCATE_DEVICE_MEMORY(nonce_gpu, ctx, sizeof(uint64_t));
 
 	cl_kernel kernel = ctx.kernels[CL_BLAKE2B_INITIAL_HASH];
 	if (!clSetKernelArgs(kernel, hash_gpu, blockTemplate_gpu, 0))
 	{
-		return 1;
+		return false;
 	}
 
 	size_t global_work_size = intensity;
@@ -138,7 +118,7 @@ int tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 	if (hashes != hashes2)
 	{
 		std::cerr << "blake2b_initial_hash test failed!" << std::endl;
-		return 1;
+		return false;
 	}
 
 	std::cout << "blake2b_initial_hash test passed" << std::endl;
@@ -146,7 +126,7 @@ int tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 	kernel = ctx.kernels[CL_FILLAES1RX4_SCRATCHPAD];
 	if (!clSetKernelArgs(kernel, hash_gpu, scratchpads_gpu, static_cast<uint32_t>(intensity)))
 	{
-		return 1;
+		return false;
 	}
 
 	global_work_size = intensity * 4;
@@ -173,7 +153,7 @@ int tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 		if (memcmp(hashes.data() + i * INITIAL_HASH_SIZE, hashes2.data() + i * INITIAL_HASH_SIZE, INITIAL_HASH_SIZE) != 0)
 		{
 			std::cerr << "fillAes1Rx4_scratchpad test (hash) failed!" << std::endl;
-			return 1;
+			return false;
 		}
 
 		const uint8_t* p1 = scratchpads + i * 64;
@@ -183,7 +163,7 @@ int tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 			if (memcmp(p1 + j * intensity, p2 + j, 64) != 0)
 			{
 				std::cerr << "fillAes1Rx4_scratchpad test (scratchpad) failed!" << std::endl;
-				return 1;
+				return false;
 			}
 		}
 	}
@@ -193,7 +173,7 @@ int tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 	kernel = ctx.kernels[CL_FILLAES1RX4_ENTROPY];
 	if (!clSetKernelArgs(kernel, hash_gpu, entropy_gpu, static_cast<uint32_t>(intensity)))
 	{
-		return 1;
+		return false;
 	}
 
 	global_work_size = intensity * 4;
@@ -213,13 +193,13 @@ int tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 		if (memcmp(hashes.data() + i * INITIAL_HASH_SIZE, hashes2.data() + i * INITIAL_HASH_SIZE, INITIAL_HASH_SIZE) != 0)
 		{
 			std::cerr << "fillAes1Rx4_entropy test (hash) failed!" << std::endl;
-			return 1;
+			return false;
 		}
 
 		if (memcmp(entropy.data() + i * ENTROPY_SIZE, entropy.data() + ENTROPY_SIZE * intensity, ENTROPY_SIZE) != 0)
 		{
 			std::cerr << "fillAes1Rx4_entropy test (entropy) failed!" << std::endl;
-			return 1;
+			return false;
 		}
 	}
 
@@ -228,7 +208,7 @@ int tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 	kernel = ctx.kernels[CL_HASHAES1RX4];
 	if (!clSetKernelArgs(kernel, scratchpads_gpu, registers_gpu, static_cast<uint32_t>(intensity)))
 	{
-		return 1;
+		return false;
 	}
 
 	global_work_size = intensity * 4;
@@ -257,7 +237,7 @@ int tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 		if (memcmp(registers.data() + i * REGISTERS_SIZE, registers.data() + intensity * REGISTERS_SIZE, REGISTERS_SIZE) != 0)
 		{
 			std::cerr << "hashAes1Rx4 test failed!" << std::endl;
-			return 1;
+			return false;
 		}
 	}
 
@@ -266,7 +246,7 @@ int tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 	kernel = ctx.kernels[CL_BLAKE2B_HASH_REGISTERS_32];
 	if (!clSetKernelArgs(kernel, hash_gpu, registers_gpu))
 	{
-		return 1;
+		return false;
 	}
 
 	global_work_size = intensity;
@@ -284,7 +264,7 @@ int tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 	if (memcmp(hashes.data(), hashes2.data(), intensity * 32) != 0)
 	{
 		std::cerr << "blake2b_hash_registers (32 byte hash) test failed!" << std::endl;
-		return 1;
+		return false;
 	}
 
 	std::cout << "blake2b_hash_registers (32 byte hash) test passed" << std::endl;
@@ -292,7 +272,7 @@ int tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 	kernel = ctx.kernels[CL_BLAKE2B_HASH_REGISTERS_64];
 	if (!clSetKernelArgs(kernel, hash_gpu, registers_gpu))
 	{
-		return 1;
+		return false;
 	}
 
 	global_work_size = intensity;
@@ -310,7 +290,7 @@ int tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 	if (memcmp(hashes.data(), hashes2.data(), intensity * 64) != 0)
 	{
 		std::cerr << "blake2b_hash_registers (64 byte hash) test failed!" << std::endl;
-		return 1;
+		return false;
 	}
 
 	std::cout << "blake2b_hash_registers (64 byte hash) test passed" << std::endl;
@@ -364,7 +344,7 @@ int tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 	kernel = ctx.kernels[CL_BLAKE2B_512_SINGLE_BLOCK_BENCH];
 	if (!clSetKernelArgs(kernel, nonce_gpu, blockTemplate_gpu, 0ULL))
 	{
-		return 1;
+		return false;
 	}
 
 	start_time = high_resolution_clock::now();
@@ -405,7 +385,7 @@ int tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 	kernel = ctx.kernels[CL_BLAKE2B_512_DOUBLE_BLOCK_BENCH];
 	if (!clSetKernelArgs(kernel, nonce_gpu, registers_gpu, 0ULL))
 	{
-		return 1;
+		return false;
 	}
 
 	CL_CHECKED_CALL(clEnqueueFillBuffer, ctx.queue, registers_gpu, &zero, sizeof(zero), 0, REGISTERS_SIZE, 0, nullptr, nullptr);
@@ -446,5 +426,5 @@ int tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 	}
 	std::cout << std::endl;
 
-	return 0;
+	return true;
 }

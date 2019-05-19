@@ -19,4 +19,4 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 
 #pragma once
 
-int tests(uint32_t platform_id, uint32_t device_id, size_t intensity);
+bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity);
