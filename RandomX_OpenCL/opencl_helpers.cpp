@@ -128,6 +128,7 @@ bool OpenCLContext::Compile(const char* binary_name, const std::initializer_list
 	cl_int err;
 
 	cl_program program = nullptr;
+	bool created_with_binary = false;
 	if (use_compiled)
 	{
 		std::ifstream f(binary_name, std::ios::binary);
@@ -140,6 +141,8 @@ bool OpenCLContext::Compile(const char* binary_name, const std::initializer_list
 			const unsigned char* binary_data = reinterpret_cast<const unsigned char*>(buf.data());
 			program = clCreateProgramWithBinary(context, 1, &device, &data_length, &binary_data, nullptr, &err);
 			CL_CHECK_RESULT(clCreateProgramWithBinary);
+
+			created_with_binary = true;
 		}
 	}
 
@@ -174,7 +177,7 @@ bool OpenCLContext::Compile(const char* binary_name, const std::initializer_list
 	}
 	std::cout << "done" << std::endl;
 
-	if (!use_compiled)
+	if (!created_with_binary)
 	{
 		size_t bin_size;
 		CL_CHECKED_CALL(clGetProgramInfo, program, CL_PROGRAM_BINARY_SIZES, sizeof(bin_size), &bin_size, nullptr);
