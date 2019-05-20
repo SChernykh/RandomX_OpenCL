@@ -22,6 +22,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #include <iostream>
 #include <stdint.h>
 #include <string>
+#include <thread>
 #include <map>
 #include <vector>
 #include <CL/cl.h>
@@ -111,3 +112,30 @@ bool clSetKernelArgs(cl_kernel kernel, Args&& ... args)
 {
 	return _clSetKernelArg<0>(kernel, std::forward<Args>(args)...);
 }
+
+struct SThread
+{
+	SThread() : t(nullptr) {}
+	SThread(const SThread&) = delete;
+	SThread(SThread&& other) : t(other.t) { other.t = nullptr; }
+
+	SThread& operator=(const SThread&) = delete;
+	SThread& operator=(SThread&&) = delete;
+
+	template<typename T>
+	SThread(T&& func) : t(new std::thread(std::move(func))) {}
+
+	~SThread() { join(); }
+
+	void join()
+	{
+		if (t)
+		{
+			t->join();
+			delete t;
+			t = nullptr;
+		}
+	}
+
+	std::thread* t;
+};

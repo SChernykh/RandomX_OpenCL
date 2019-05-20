@@ -19,7 +19,6 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 
 #include <algorithm>
 #include <chrono>
-#include <thread>
 #include <atomic>
 #include <sstream>
 #include "miner.h"
@@ -117,7 +116,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 			const char mySeed[] = "RandomX example seed";
 			randomx_init_cache(myCache, mySeed, sizeof(mySeed));
 
-			std::vector<std::thread> threads;
+			std::vector<SThread> threads;
 			for (uint32_t i = 0, n = std::thread::hardware_concurrency(); i < n; ++i)
 				threads.emplace_back([myDataset, myCache, i, n]() { randomx_init_dataset(myDataset, myCache, (i * randomx_dataset_item_count()) / n, ((i + 1) * randomx_dataset_item_count()) / n - (i * randomx_dataset_item_count()) / n); });
 
@@ -156,7 +155,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 	hashes.resize(intensity * 32);
 	hashes_check.resize(intensity * 32);
 
-	std::vector<std::thread> threads;
+	std::vector<SThread> threads;
 	std::atomic<uint32_t> nonce_counter;
 	bool cpu_limited = false;
 
