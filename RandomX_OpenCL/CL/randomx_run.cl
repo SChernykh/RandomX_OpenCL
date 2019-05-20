@@ -93,8 +93,8 @@ __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratch
 		spAddr1 ^= spMix.y;
 		spAddr1 &= ScratchpadL3Mask64;
 
-		__global ulong* p0 = (__global ulong*)(scratchpad + (spAddr0 * batch_size + sub * 8));
-		__global ulong* p1 = (__global ulong*)(scratchpad + (spAddr1 * batch_size + sub * 8));
+		__global ulong* p0 = (__global ulong*)(scratchpad + mad24(spAddr0, batch_size, sub * 8));
+		__global ulong* p1 = (__global ulong*)(scratchpad + mad24(spAddr1, batch_size, sub * 8));
 
 		R[sub] ^= *p0;
 
