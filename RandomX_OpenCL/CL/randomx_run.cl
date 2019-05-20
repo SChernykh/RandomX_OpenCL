@@ -44,13 +44,13 @@ double load_F_E_groups(int value, ulong andMask, ulong orMask)
 __attribute__((reqd_work_group_size(LOCAL_GROUP_SIZE, 1, 1)))
 __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratchpad, __global ulong* registers, __global uint* rounding_modes, __global uint* programs, uint batch_size)
 {
-	__local ulong R_buf[REGISTERS_COUNT * HASHES_PER_GROUP];
+	__local ulong2 R_buf[REGISTERS_COUNT * HASHES_PER_GROUP / 2];
 
 	const uint global_index = get_global_id(0);
 	const uint idx = global_index / WORKERS_PER_HASH;
 	const uint sub = global_index % WORKERS_PER_HASH;
 
-	__local ulong* R = R_buf + (idx % HASHES_PER_GROUP) * REGISTERS_COUNT;
+	__local ulong* R = (__local ulong*)(R_buf + (idx % HASHES_PER_GROUP) * REGISTERS_COUNT / 2);
 	__local double* F = (__local double*)(R + 8);
 	__local double* E = (__local double*)(R + 16);
 
