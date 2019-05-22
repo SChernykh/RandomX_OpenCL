@@ -44,8 +44,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 	if (!ctx.Compile("base_kernels.bin",
 		{
 			AES_CL,
-			BLAKE2B_CL,
-			RANDOMX_INIT_CL
+			BLAKE2B_CL
 		},
 		{
 			CL_FILLAES1RX4_SCRATCHPAD,
@@ -54,16 +53,22 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 			CL_BLAKE2B_INITIAL_HASH,
 			CL_BLAKE2B_HASH_REGISTERS_32,
 			CL_BLAKE2B_HASH_REGISTERS_64,
-			CL_RANDOMX_INIT
+			CL_BLAKE2B_512_SINGLE_BLOCK_BENCH,
+			CL_BLAKE2B_512_DOUBLE_BLOCK_BENCH
 		},
-		"", true))
+		"", COMPILE_CACHE_BINARY))
+	{
+		return false;
+	}
+
+	if (!ctx.Compile("randomx_init.bin", { RANDOMX_INIT_CL }, { CL_RANDOMX_INIT }, "", ALWAYS_COMPILE))
 	{
 		return false;
 	}
 
 	std::stringstream options;
 	options << "-D RANDOMX_PROGRAM_ITERATIONS=" << RANDOMX_PROGRAM_ITERATIONS;
-	if (!ctx.Compile("randomx.bin", { RANDOMX_RUN_CL }, { CL_RANDOMX_RUN }, options.str()))
+	if (!ctx.Compile("randomx_run.bin", { RANDOMX_RUN_CL }, { CL_RANDOMX_RUN }, options.str(), ALWAYS_USE_BINARY))
 	{
 		return false;
 	}

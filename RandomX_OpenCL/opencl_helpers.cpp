@@ -104,7 +104,7 @@ bool OpenCLContext::Init(uint32_t platform_id, uint32_t device_id)
 	return true;
 }
 
-bool OpenCLContext::Compile(const char* binary_name, const std::initializer_list<std::string>& source_files, const std::initializer_list<std::string>& kernel_names, const std::string& options, bool use_compiled)
+bool OpenCLContext::Compile(const char* binary_name, const std::initializer_list<std::string>& source_files, const std::initializer_list<std::string>& kernel_names, const std::string& options, CachingParameters caching)
 {
 	std::vector<std::string> source;
 	source.reserve(source_files.size());
@@ -129,7 +129,7 @@ bool OpenCLContext::Compile(const char* binary_name, const std::initializer_list
 
 	cl_program program = nullptr;
 	bool created_with_binary = false;
-	if (use_compiled)
+	if (caching != ALWAYS_COMPILE)
 	{
 		std::ifstream f(binary_name, std::ios::binary);
 		if (f.is_open())
@@ -144,10 +144,20 @@ bool OpenCLContext::Compile(const char* binary_name, const std::initializer_list
 
 			created_with_binary = true;
 		}
+		else if (caching == ALWAYS_USE_BINARY)
+		{
+			std::cerr << "Couldn't open " << binary_name << std::endl;
+			return false;
+		}
 	}
 
 	if (!program)
 	{
+		if (caching == ALWAYS_USE_BINARY)
+		{
+			std::cerr << "Couldn't create program from binary " << binary_name << std::endl;
+			return false;
+		}
 		program = clCreateProgramWithSource(context, static_cast<cl_uint>(source_files.size()), p, nullptr, &err);
 		CL_CHECK_RESULT(clCreateProgramWithSource);
 	}

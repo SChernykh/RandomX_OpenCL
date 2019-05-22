@@ -64,7 +64,7 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 			CL_BLAKE2B_HASH_REGISTERS_64,
 			CL_BLAKE2B_512_SINGLE_BLOCK_BENCH,
 			CL_BLAKE2B_512_DOUBLE_BLOCK_BENCH
-		}))
+		}, "", COMPILE_CACHE_BINARY))
 	{
 		return false;
 	}

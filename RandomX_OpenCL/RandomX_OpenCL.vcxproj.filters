@@ -12,6 +12,9 @@
     <Filter Include="Source Files\CL">
       <UniqueIdentifier>{7789d323-c959-469b-addc-91336f3201fc}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\GCNASM">
+      <UniqueIdentifier>{181c0a82-12c6-4d82-8e7f-51fe2a1cee17}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="RandomX_OpenCL.cpp">
@@ -60,5 +63,10 @@
     <None Include="CL\randomx_run.cl">
       <Filter>Source Files\CL</Filter>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="GCNASM\randomx_run.asm">
+      <Filter>Source Files\GCNASM</Filter>
+    </CustomBuild>
   </ItemGroup>
 </Project>

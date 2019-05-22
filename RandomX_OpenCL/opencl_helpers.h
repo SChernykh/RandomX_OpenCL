@@ -41,6 +41,13 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 	err = func(__VA_ARGS__); \
 	CL_CHECK_RESULT(func);
 
+enum CachingParameters
+{
+	ALWAYS_COMPILE = 0,
+	COMPILE_CACHE_BINARY = 1,
+	ALWAYS_USE_BINARY = 2,
+};
+
 struct OpenCLContext
 {
 	OpenCLContext()
@@ -51,7 +58,7 @@ struct OpenCLContext
 	~OpenCLContext();
 
 	bool Init(uint32_t platform_id, uint32_t device_id);
-	bool Compile(const char* binary_name, const std::initializer_list<std::string>& source_files, const std::initializer_list<std::string>& kernel_names, const std::string& options = std::string(), bool use_compiled = false);
+	bool Compile(const char* binary_name, const std::initializer_list<std::string>& source_files, const std::initializer_list<std::string>& kernel_names, const std::string& options = std::string(), CachingParameters caching = ALWAYS_COMPILE);
 
 	cl_device_id device;
 	cl_context context;

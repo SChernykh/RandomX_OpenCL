@@ -112,6 +112,11 @@
     <None Include="CL\fillAes1Rx4.cl" />
     <None Include="CL\randomx_init.cl" />
     <None Include="CL\randomx_run.cl" />
+    <CustomBuild Include="GCNASM\randomx_run.asm">
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">clrxasm %(Identity) -o %(Filename).bin</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(Filename).bin</Outputs>
+    </CustomBuild>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

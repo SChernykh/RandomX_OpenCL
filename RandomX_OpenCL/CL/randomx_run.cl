@@ -41,6 +41,7 @@ double load_F_E_groups(int value, ulong andMask, ulong orMask)
 	return as_double(x);
 }
 
+// This kernel is only used to dump binary and disassemble it into randomx_run.asm
 __attribute__((reqd_work_group_size(LOCAL_GROUP_SIZE, 1, 1)))
 __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratchpad, __global ulong* registers, __global uint* rounding_modes, __global uint* programs, uint batch_size)
 {
@@ -50,7 +51,8 @@ __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratch
 	const uint idx = global_index / WORKERS_PER_HASH;
 	const uint sub = global_index % WORKERS_PER_HASH;
 
-	__local ulong* R = (__local ulong*)(R_buf + (idx % HASHES_PER_GROUP) * REGISTERS_COUNT / 2);
+	__local ulong* R = (__local ulong*)((__local uchar*)(R_buf) + (get_local_id(0) / WORKERS_PER_HASH) * REGISTERS_COUNT * sizeof(ulong));
+
 	__local double* F = (__local double*)(R + 8);
 	__local double* E = (__local double*)(R + 16);
 
@@ -113,7 +115,30 @@ __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratch
 		// 5) ???
 		// 6) PROFIT!!!
 
-		//atomic_inc(programs);
+		atomic_inc(programs);
+
+#if 0
+		// memory access benchmark
+		if (sub == 0)
+		{
+			uint k = spAddr0;
+			ulong l = 0;
+
+			#pragma unroll
+			for (uint i = 0; i < 39; ++i)
+			{
+				k = mad24(k, 1664525U, 1013904223U);
+				l += *(__global ulong*)(scratchpad + mad24(k & ScratchpadL3Mask64, batch_size, k & 56));
+			}
+
+			#pragma unroll
+			for (uint i = 0; i < 16; ++i)
+			{
+				k = mad24(k, 1664525U, 1013904223U);
+				*(__global ulong*)(scratchpad + mad24(k & ScratchpadL3Mask64, batch_size, k & 56)) = l;
+			}
+		}
+#endif
 
 		mx ^= R[readReg2] ^ R[readReg3];
 		mx &= CacheLineAlignMask;

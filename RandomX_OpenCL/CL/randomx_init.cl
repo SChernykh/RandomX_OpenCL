@@ -34,6 +34,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #define DatasetExtraItems 524287U
 
 #define ENTROPY_SIZE (128 + 2048)
+#define COMPILED_PROGRAM_SIZE 16384
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -65,6 +66,36 @@ __kernel void randomx_init(__global const ulong* entropy, __global ulong* regist
 	const uint global_index = get_global_id(0);
 	__global ulong* R = registers + global_index * 32;
 	entropy += global_index * (ENTROPY_SIZE / sizeof(ulong));
+	programs += global_index * (COMPILED_PROGRAM_SIZE / sizeof(uint));
+
+	__global uint* p = programs;
+
+	// Enable lane 0 only
+	*(p++) = 0xbefe0181; // s_mov_b64 exec, 1
+
+	// Insert program 0 here
+
+	// Enable lane 16 only
+	*(p++) = 0x8efe907e; // s_lshl_b64 exec, exec, 16
+
+	// Insert program 1 here
+
+	// Enable lane 32 only
+	*(p++) = 0x8efe907e; // s_lshl_b64 exec, exec, 16
+
+	// Insert program 2 here
+
+	// Enable lane 48 only
+	*(p++) = 0x8efe907e; // s_lshl_b64 exec, exec, 16
+
+	// Insert program 3 here
+
+	// Enable first 8 lanes for each hash ("sub < 8" in randomx_run)
+	*(p++) = 0xbe8e00ff; // s_mov_b32       s14, 0xff00ff
+	*(p++) = 0x00ff00ff;
+	*(p++) = 0xbe8f000e; // s_mov_b32 s15, s14
+	*(p++) = 0xbefe010e; // s_mov_b64 exec, s[14:15]
+	*(p++) = 0xbe801d0c; // s_setpc_b64 s[12:13]
 
 	// Group R registers
 	R[0] = 0;
