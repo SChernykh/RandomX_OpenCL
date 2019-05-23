@@ -23,6 +23,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #define HASHES_PER_GROUP (LOCAL_GROUP_SIZE / WORKERS_PER_HASH)
 #define REGISTERS_COUNT 32
 #define SCRATCHPAD_STRIDE_SIZE 64
+#define COMPILED_PROGRAM_SIZE 65536
 
 #define ScratchpadL3Mask64 ((1 << 21) - 64)
 
@@ -58,6 +59,8 @@ __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratch
 
 	registers += idx * REGISTERS_COUNT;
 	scratchpad += idx * SCRATCHPAD_STRIDE_SIZE;
+	rounding_modes += idx;
+	programs += get_group_id(0) * (COMPILED_PROGRAM_SIZE / sizeof(uint));
 
 	((__local ulong2*) R)[sub] = ((__global ulong2*) registers)[sub];
 	barrier(CLK_LOCAL_MEM_FENCE);
