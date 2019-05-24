@@ -33,9 +33,12 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #define CacheLineAlignMask ((1U << 31) - 1) & ~(CacheLineSize - 1)
 #define DatasetExtraItems 524287U
 
+#define RANDOMX_PROGRAM_SIZE 256
 #define ENTROPY_SIZE (128 + 2048)
 #define COMPILED_PROGRAM_SIZE 65536
 #define HASHES_PER_GROUP 4
+
+#define RANDOMX_FREQ_IADD_RS       25
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -61,8 +64,53 @@ ulong getFloatMask(const ulong entropy)
 	return (entropy & mask22bit) | getStaticExponent(entropy);
 }
 
-__global uint* generate_jit_code(__global const ulong* e, __global uint* p, uint index)
+__global uint* generate_jit_code(__global const uint2* e, __global uint* p, uint index)
 {
+	for (uint i = 0; i < RANDOMX_PROGRAM_SIZE; ++i)
+	{
+		const uint2 inst = e[i];
+		uint opcode = inst.x & 0xFF;
+		const uint dst = (inst.x >> 8) & 7;
+		const uint src = (inst.x >> 16) & 7;
+		const uint mod = inst.x >> 24;
+
+		if (opcode < RANDOMX_FREQ_IADD_RS)
+		{
+			const uint shift = (mod >> 2) % 4;
+			if (shift > 0)
+			{
+				// s_lshl_b64 s[14:15], s[(16 + src * 2):(17 + src * 2)], shift
+				*(p++) = 0x8e8e8010u | (src << 1) | (shift << 8);
+
+				// s_add_u32 s(16 + dst * 2), s(16 + dst * 2), s14
+				*(p++) = 0x80100e10u | (dst << 1) | (dst << 17);
+
+				// s_addc_u32 s(17 + dst * 2), s(17 + dst * 2), s15
+				*(p++) = 0x82110f11u | (dst << 1) | (dst << 17);
+			}
+			else
+			{
+				// s_add_u32 s(16 + dst * 2), s(16 + dst * 2), s(16 + src * 2)
+				*(p++) = 0x80101010u | (dst << 1) | (dst << 17) | (src << 9);
+
+				// s_addc_u32 s(17 + dst * 2), s(17 + dst * 2), s(17 + src * 2)
+				*(p++) = 0x82111111u | (dst << 1) | (dst << 17) | (src << 9);
+			}
+
+			if (dst == 5)
+			{
+				// s_add_u32 s(16 + dst * 2), s(16 + dst * 2), imm32
+				*(p++) = 0x8010ff10u | (dst << 1) | (dst << 17);
+				*(p++) = inst.y;
+
+				// s_addc_u32 s(17 + dst * 2), s(17 + dst * 2), ((inst.y < 0) ? -1 : 0)
+				*(p++) = 0x82110011 | (dst << 1) | (dst << 17) | (((as_int(inst.y) < 0) ? 0xc1 : 0x80) << 8);
+			}
+			continue;
+		}
+		opcode -= RANDOMX_FREQ_IADD_RS;
+	}
+
 	// Jump back to randomx_run kernel
 	*(p++) = 0xbe8e1e0cu; // s_swappc_b64 s[14:15], s[12:13]
 
@@ -76,11 +124,11 @@ __kernel void randomx_init(__global const ulong* entropy, __global ulong* regist
 	if ((global_index % HASHES_PER_GROUP) == 0)
 	{
 		__global uint* p = programs + (global_index / HASHES_PER_GROUP) * (COMPILED_PROGRAM_SIZE / sizeof(uint));
-		__global const ulong* e = entropy + (global_index / HASHES_PER_GROUP) * (ENTROPY_SIZE / sizeof(ulong));
-		p = generate_jit_code(e, p, 0);
-		p = generate_jit_code(e + (ENTROPY_SIZE / sizeof(ulong)), p, 1);
-		p = generate_jit_code(e + (ENTROPY_SIZE / sizeof(ulong)) * 2, p, 2);
-		p = generate_jit_code(e + (ENTROPY_SIZE / sizeof(ulong)) * 3, p, 3);
+		__global const uint2* e = (__global const uint2*)(entropy + (global_index / HASHES_PER_GROUP) * HASHES_PER_GROUP * (ENTROPY_SIZE / sizeof(ulong)) + (128 / sizeof(ulong)));
+
+		#pragma unroll(1)
+		for (uint i = 0; i < HASHES_PER_GROUP; ++i, e += (ENTROPY_SIZE / sizeof(uint2)))
+			p = generate_jit_code(e, p, i);
 	}
 
 	__global ulong* R = registers + global_index * 32;

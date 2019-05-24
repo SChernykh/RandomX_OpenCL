@@ -150,7 +150,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 	ALLOCATE_DEVICE_MEMORY(registers_gpu, ctx, intensity * REGISTERS_SIZE);
 	ALLOCATE_DEVICE_MEMORY(rounding_gpu, ctx, intensity * sizeof(uint32_t));
 	ALLOCATE_DEVICE_MEMORY(blocktemplate_gpu, ctx, intensity * sizeof(blockTemplate));
-	ALLOCATE_DEVICE_MEMORY(compiled_programs_gpu, ctx, intensity * COMPILED_PROGRAM_SIZE);
+	ALLOCATE_DEVICE_MEMORY(compiled_programs_gpu, ctx, (intensity / HASHES_PER_GROUP) * COMPILED_PROGRAM_SIZE);
 
 	CL_CHECKED_CALL(clEnqueueWriteBuffer, ctx.queue, blocktemplate_gpu, CL_TRUE, 0, sizeof(blockTemplate), blockTemplate, 0, nullptr, nullptr);
 
@@ -285,6 +285,16 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 		{
 			CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_fillaes1rx4_entropy, 1, nullptr, &global_work_size4, &local_work_size, 0, nullptr, nullptr);
 			CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_init, 1, nullptr, &global_work_size, &local_work_size, 0, nullptr, nullptr);
+			//if (i == 0)
+			//{
+			//	CL_CHECKED_CALL(clFinish, ctx.queue);
+			//	std::vector<char> buf((intensity / HASHES_PER_GROUP) * COMPILED_PROGRAM_SIZE);
+			//	CL_CHECKED_CALL(clEnqueueReadBuffer, ctx.queue, compiled_programs_gpu, CL_TRUE, 0, buf.size(), buf.data(), 0, nullptr, nullptr);
+			//	FILE* fp;
+			//	fopen_s(&fp, "compiled_program.bin", "wb");
+			//	fwrite(buf.data(), 1, buf.size(), fp);
+			//	fclose(fp);
+			//}
 			CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_run, 1, nullptr, &global_work_size16, &local_work_size, 0, nullptr, nullptr);
 
 			if (i == RANDOMX_PROGRAM_COUNT - 1)

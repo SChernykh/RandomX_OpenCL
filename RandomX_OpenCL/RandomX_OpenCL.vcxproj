@@ -116,6 +116,8 @@
       <FileType>Document</FileType>
       <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">clrxasm %(Identity) -o %(Filename).bin</Command>
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(Filename).bin</Outputs>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">clrxasm %(Identity) -o %(Filename).bin</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(Filename).bin</Outputs>
     </CustomBuild>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

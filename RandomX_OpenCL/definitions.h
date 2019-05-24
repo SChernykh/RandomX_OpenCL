@@ -26,6 +26,7 @@ static constexpr int ENTROPY_SIZE = 128 + 2048;
 static constexpr int REGISTERS_SIZE = 256;
 static constexpr int INITIAL_HASH_SIZE = 64;
 static constexpr int COMPILED_PROGRAM_SIZE = 65536;
+static constexpr int HASHES_PER_GROUP = 4;
 
 static const std::string AES_CL = "CL/aes.cl";
 static const std::string CL_FILLAES1RX4_SCRATCHPAD = "fillAes1Rx4_scratchpad";
