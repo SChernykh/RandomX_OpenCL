@@ -95,6 +95,7 @@
     <ClCompile Include="tests.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="CL\randomx_constants.h" />
     <ClInclude Include="definitions.h" />
     <ClInclude Include="miner.h" />
     <ClInclude Include="opencl_helpers.h" />

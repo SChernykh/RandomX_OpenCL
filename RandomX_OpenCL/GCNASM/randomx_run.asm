@@ -76,11 +76,19 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		s_waitcnt       lgkmcnt(0)
 		s_mov_b64       s[0:1], exec
 		v_cmpx_le_u32   s[2:3], v18, 7
-		v_lshlrev_b32   v10, 6, v6
+
+		# Base address for non-strided scratchpads
+		v_mov_b32       v12, 2097152 + 64
+		v_mul_u32_u24   v10, v6, v12
+
+		# Base address for strided scratchpads
+		#v_lshlrev_b32   v10, 6, v6
+
+		# Base address for registers buffer (R)
 		v_lshlrev_b32   v12, 4, v0
 
-		# v39 = R
-		v_mov_b32       v39, v12
+		# v39 = 0
+		v_mov_b32       v39, 0
 
 		s_cbranch_execz program_end
 		v_cmp_lt_u32    s[2:3], v18, 4
@@ -130,17 +138,37 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		s_movk_i32      s2, 0x7ff
 
 main_loop:
+		# const uint2 spMix = as_uint2(R[readReg0] ^ R[readReg1]);
 		ds_read_b64     v[2:3], v32
 		ds_read_b64     v[4:5], v31
 		s_waitcnt       lgkmcnt(0)
 		v_xor_b32       v3, v5, v3
 		v_xor_b32       v2, v4, v2
+
+		# spAddr1 ^= spMix.y;
+		# spAddr0 ^= spMix.x;
 		v_xor_b32       v3, v3, v10
 		v_xor_b32       v2, v2, v11
+
+		# spAddr1 &= ScratchpadL3Mask64;
+		# spAddr0 &= ScratchpadL3Mask64;
 		v_and_b32       v3, 0x1fffc0, v3
 		v_and_b32       v2, 0x1fffc0, v2
-		v_mad_u32_u24   v3, v3, s4, v22
-		v_mad_u32_u24   v2, v2, s4, v22
+
+		# Offset for non-strided scratchpads
+		# spAddr1 + sub * 8
+		# spAddr0 + sub * 8
+		v_add_u32       v3, v3, v22
+		v_add_u32       v2, v2, v22
+
+		# Offset for strided scratchpads
+		# mad24(spAddr1, batch_size, sub * 8)
+		# mad24(spAddr0, batch_size, sub * 8)
+		#v_mad_u32_u24   v3, v3, s4, v22
+		#v_mad_u32_u24   v2, v2, s4, v22
+
+		# __global ulong* p1 = (__global ulong*)(scratchpad + spAddr1 + sub * 8);
+		# __global ulong* p0 = (__global ulong*)(scratchpad + spAddr0 + sub * 8);
 		v_add_co_u32    v37, vcc, v24, v3
 		v_addc_co_u32   v38, vcc, v25, 0, vcc
 		v_add_co_u32    v10, vcc, v24, v2
@@ -193,6 +221,10 @@ main_loop:
 		v_readlane_b32	s30, v0, 7
 		v_readlane_b32	s31, v1, 7
 
+		# load scratchpad base address
+		v_readlane_b32	s0, v24, 0
+		v_readlane_b32	s1, v25, 0
+
 		# call JIT code
 		s_swappc_b64    s[12:13], s[6:7]
 
@@ -234,6 +266,10 @@ main_loop:
 		v_readlane_b32	s29, v1, 16 + 6
 		v_readlane_b32	s30, v0, 16 + 7
 		v_readlane_b32	s31, v1, 16 + 7
+
+		# load scratchpad base address
+		v_readlane_b32	s0, v24, 16
+		v_readlane_b32	s1, v25, 16
 
 		# call JIT code
 		s_swappc_b64    s[12:13], s[14:15]
@@ -277,6 +313,10 @@ main_loop:
 		v_readlane_b32	s30, v0, 32 + 7
 		v_readlane_b32	s31, v1, 32 + 7
 
+		# load scratchpad base address
+		v_readlane_b32	s0, v24, 32
+		v_readlane_b32	s1, v25, 32
+
 		# call JIT code
 		s_swappc_b64    s[12:13], s[14:15]
 
@@ -318,6 +358,10 @@ main_loop:
 		v_readlane_b32	s29, v1, 48 + 6
 		v_readlane_b32	s30, v0, 48 + 7
 		v_readlane_b32	s31, v1, 48 + 7
+
+		# load scratchpad base address
+		v_readlane_b32	s0, v24, 48
+		v_readlane_b32	s1, v25, 48
 
 		# call JIT code
 		s_swappc_b64    s[12:13], s[14:15]

@@ -18,6 +18,8 @@ You should have received a copy of the GNU General Public License
 along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "randomx_constants.h"
+
 #define LOCAL_GROUP_SIZE 64
 #define WORKERS_PER_HASH 16
 #define HASHES_PER_GROUP (LOCAL_GROUP_SIZE / WORKERS_PER_HASH)
@@ -58,7 +60,7 @@ __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratch
 	__local double* E = (__local double*)(R + 16);
 
 	registers += idx * REGISTERS_COUNT;
-	scratchpad += idx * SCRATCHPAD_STRIDE_SIZE;
+	scratchpad += idx * (SCRATCHPAD_STRIDED ? SCRATCHPAD_STRIDE_SIZE : (SCRATCHPAD_SIZE + 64));
 	rounding_modes += idx;
 	programs += get_group_id(0) * (COMPILED_PROGRAM_SIZE / sizeof(uint));
 
@@ -98,8 +100,8 @@ __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratch
 		spAddr1 ^= spMix.y;
 		spAddr1 &= ScratchpadL3Mask64;
 
-		__global ulong* p0 = (__global ulong*)(scratchpad + mad24(spAddr0, batch_size, sub * 8));
-		__global ulong* p1 = (__global ulong*)(scratchpad + mad24(spAddr1, batch_size, sub * 8));
+		__global ulong* p0 = (__global ulong*)(scratchpad + (SCRATCHPAD_STRIDED ? mad24(spAddr0, batch_size, sub * 8) : (spAddr0 + sub * 8)));
+		__global ulong* p1 = (__global ulong*)(scratchpad + (SCRATCHPAD_STRIDED ? mad24(spAddr1, batch_size, sub * 8) : (spAddr1 + sub * 8)));
 
 		R[sub] ^= *p0;
 
@@ -118,7 +120,7 @@ __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratch
 		// 5) ???
 		// 6) PROFIT!!!
 
-		atomic_inc(programs);
+		//atomic_inc(programs);
 
 #if 0
 		// memory access benchmark

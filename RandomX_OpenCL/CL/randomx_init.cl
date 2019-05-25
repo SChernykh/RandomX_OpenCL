@@ -18,6 +18,8 @@ You should have received a copy of the GNU General Public License
 along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "randomx_constants.h"
+
 #define mantissaSize 52
 #define exponentSize 11
 #define mantissaMask ((1UL << mantissaSize) - 1)
@@ -33,12 +35,15 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #define CacheLineAlignMask ((1U << 31) - 1) & ~(CacheLineSize - 1)
 #define DatasetExtraItems 524287U
 
-#define RANDOMX_PROGRAM_SIZE 256
-#define ENTROPY_SIZE (128 + 2048)
-#define COMPILED_PROGRAM_SIZE 65536
-#define HASHES_PER_GROUP 4
+#define ScratchpadL1Mask 16376
+#define ScratchpadL2Mask 262136
+#define ScratchpadL3Mask 2097144
 
 #define RANDOMX_FREQ_IADD_RS       25
+#define RANDOMX_FREQ_IADD_M         7
+#define RANDOMX_FREQ_ISUB_R        16
+#define RANDOMX_FREQ_ISUB_M         7
+#define RANDOMX_FREQ_IMUL_R        16
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -64,7 +69,78 @@ ulong getFloatMask(const ulong entropy)
 	return (entropy & mask22bit) | getStaticExponent(entropy);
 }
 
-__global uint* generate_jit_code(__global const uint2* e, __global uint* p, uint index)
+__global uint* jit_scratchpad_calc_address(__global uint* p, uint src, uint imm32, uint mask, uint batch_size)
+{
+	// s_add_i32 s14, s(16 + src * 2), imm32
+	*(p++) = 0x810eff10u | (src << 1);
+	*(p++) = imm32;
+
+#if SCRATCHPAD_STRIDED == 1
+	// s_and_b32 s15, s14, mask & CacheLineAlignMask
+	*(p++) = 0x860fff0eu;
+	*(p++) = mask & CacheLineAlignMask;
+
+	// s_mulk_i32 s15, batch_size
+	*(p++) = 0xb78f0000u | batch_size;
+
+	// s_and_b32 s14, s14, 56
+	*(p++) = 0x860eb80eu;
+
+	// s_add_u32 s14, s14, s15
+	*(p++) = 0x800e0f0eu;
+#else
+	// s_and_b32 s14, s14, mask
+	*(p++) = 0x860eff0eu;
+	*(p++) = mask;
+#endif
+
+	// s_add_u32 s14, s0, s14
+	*(p++) = 0x800e0e00u;
+
+	// s_addc_u32 s15, s1, 0
+	*(p++) = 0x820f8001u;
+
+	return p;
+}
+
+__global uint* jit_scratchpad_calc_fixed_address(__global uint* p, uint imm32, uint batch_size)
+{
+#if SCRATCHPAD_STRIDED == 1
+	imm32 = mad24(imm32 & ~63u, batch_size, imm32 & 56);
+#endif
+
+	// s_add_u32 s14, s0, imm32
+	*(p++) = 0x800eff00u;
+	*(p++) = imm32;
+
+	// s_addc_u32 s15, s1, 0
+	*(p++) = 0x820f8001u;
+
+	return p;
+}
+
+__global uint* jit_scratchpad_load(__global uint* p, uint index)
+{
+	// v39 = 0
+	// global_load_dwordx2 v[4:5], v39, s[14:15]
+	*(p++) = 0xdc548000u;
+	*(p++) = 0x040e0027u;
+
+	// s_waitcnt vmcnt(0)
+	*(p++) = 0xbf8c0f70u;
+
+	// v_readlane_b32 s14, v4, index * 16
+	*(p++) = 0xd289000eu;
+	*(p++) = 0x00010104u | (index << 13);
+
+	// v_readlane_b32 s15, v5, index * 16
+	*(p++) = 0xd289000fu;
+	*(p++) = 0x00010105u | (index << 13);
+
+	return p;
+}
+
+__global uint* generate_jit_code(__global const uint2* e, __global uint* p, uint index, uint batch_size)
 {
 	for (uint i = 0; i < RANDOMX_PROGRAM_SIZE; ++i)
 	{
@@ -104,11 +180,121 @@ __global uint* generate_jit_code(__global const uint2* e, __global uint* p, uint
 				*(p++) = inst.y;
 
 				// s_addc_u32 s(17 + dst * 2), s(17 + dst * 2), ((inst.y < 0) ? -1 : 0)
-				*(p++) = 0x82110011 | (dst << 1) | (dst << 17) | (((as_int(inst.y) < 0) ? 0xc1 : 0x80) << 8);
+				*(p++) = 0x82110011u | (dst << 1) | (dst << 17) | (((as_int(inst.y) < 0) ? 0xc1 : 0x80) << 8);
 			}
 			continue;
 		}
 		opcode -= RANDOMX_FREQ_IADD_RS;
+
+		if (opcode < RANDOMX_FREQ_IADD_M)
+		{
+			if (src != dst)
+				p = jit_scratchpad_calc_address(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask : ScratchpadL2Mask, batch_size);
+			else
+				p = jit_scratchpad_calc_fixed_address(p, inst.y & ScratchpadL3Mask, batch_size);
+
+			p = jit_scratchpad_load(p, index);
+
+			// s_add_u32 s(16 + dst * 2), s(16 + dst * 2), s14
+			*(p++) = 0x80100e10u | (dst << 1) | (dst << 17);
+
+			// s_addc_u32 s(17 + dst * 2), s(17 + dst * 2), s15
+			*(p++) = 0x82110f11u | (dst << 1) | (dst << 17);
+
+			continue;
+		}
+		opcode -= RANDOMX_FREQ_IADD_M;
+
+		if (opcode < RANDOMX_FREQ_ISUB_R)
+		{
+			if (src != dst)
+			{
+				// s_sub_u32 s(16 + dst * 2), s(16 + dst * 2), s(16 + src * 2)
+				*(p++) = 0x80901010u | (dst << 1) | (dst << 17) | (src << 9);
+
+				// s_subb_u32 s(17 + dst * 2), s(17 + dst * 2), s(17 + src * 2)
+				*(p++) = 0x82911111u | (dst << 1) | (dst << 17) | (src << 9);
+			}
+			else
+			{
+				// s_sub_u32 s(16 + dst * 2), s(16 + dst * 2), imm32
+				*(p++) = 0x8090ff10u | (dst << 1) | (dst << 17);
+				*(p++) = inst.y;
+
+				// s_subb_u32 s(17 + dst * 2), s(17 + dst * 2), ((inst.y < 0) ? -1 : 0)
+				*(p++) = 0x82910011u | (dst << 1) | (dst << 17) | (((as_int(inst.y) < 0) ? 0xc1 : 0x80) << 8);
+			}
+			continue;
+		}
+		opcode -= RANDOMX_FREQ_ISUB_R;
+
+		if (opcode < RANDOMX_FREQ_ISUB_M)
+		{
+			if (src != dst)
+				p = jit_scratchpad_calc_address(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask : ScratchpadL2Mask, batch_size);
+			else
+				p = jit_scratchpad_calc_fixed_address(p, inst.y & ScratchpadL3Mask, batch_size);
+
+			p = jit_scratchpad_load(p, index);
+
+			// s_sub_u32 s(16 + dst * 2), s(16 + dst * 2), s14
+			*(p++) = 0x80900e10u | (dst << 1) | (dst << 17);
+
+			// s_subb_u32 s(17 + dst * 2), s(17 + dst * 2), s15
+			*(p++) = 0x82910f11u | (dst << 1) | (dst << 17);
+
+			continue;
+		}
+		opcode -= RANDOMX_FREQ_ISUB_M;
+
+		if (opcode < RANDOMX_FREQ_IMUL_R)
+		{
+			if (src != dst)
+			{
+				// s_mul_hi_u32 s15, s(16 + dst * 2), s(16 + src * 2)
+				*(p++) = 0x960f1010u | (dst << 1) | (src << 9);
+
+				// s_mul_i32 s14, s(16 + dst * 2), s(17 + src * 2)
+				*(p++) = 0x920e1110u | (dst << 1) | (src << 9);
+
+				// s_add_u32 s15, s15, s14
+				*(p++) = 0x800f0e0fu;
+
+				// s_mul_i32 s14, s(17 + dst * 2), s(16 + src * 2)
+				*(p++) = 0x920e1011u | (dst << 1) | (src << 9);
+
+				// s_add_u32 s(17 + dst * 2), s15, s14
+				*(p++) = 0x80110e0fu | (dst << 17);
+
+				// s_mul_i32 s(16 + dst * 2), s(16 + dst * 2), s(16 + src * 2)
+				*(p++) = 0x92101010u | (dst << 1) | (dst << 17) | (src << 9);
+			}
+			else
+			{
+				// s_mul_hi_u32 s15, s(16 + dst * 2), imm32
+				*(p++) = 0x960fff10u | (dst << 1);
+				*(p++) = inst.y;
+
+				// s_mul_i32 s14, s16, (imm32 < 0) ? -1 : 0
+				*(p++) = 0x920e0010u | (dst << 1) | ((as_int(inst.y) < 0) ? 0xc100 : 0x8000);
+
+				// s_add_u32 s15, s15, s14
+				*(p++) = 0x800f0e0fu;
+
+				// s_mul_i32 s14, s(17 + dst * 2), imm32
+				*(p++) = 0x920eff11u | (dst << 1);
+				*(p++) = inst.y;
+
+				// s_add_u32 s(17 + dst * 2), s15, s14
+				*(p++) = 0x80110e0fu | (dst << 17);
+
+				// s_mul_i32 s(16 + dst * 2), s(16 + dst * 2), imm32
+				*(p++) = 0x9210ff10u | (dst << 1) | (dst << 17);
+				*(p++) = inst.y;
+			}
+			continue;
+		}
+		opcode -= RANDOMX_FREQ_IMUL_R;
 	}
 
 	// Jump back to randomx_run kernel
@@ -128,7 +314,7 @@ __kernel void randomx_init(__global const ulong* entropy, __global ulong* regist
 
 		#pragma unroll(1)
 		for (uint i = 0; i < HASHES_PER_GROUP; ++i, e += (ENTROPY_SIZE / sizeof(uint2)))
-			p = generate_jit_code(e, p, i);
+			p = generate_jit_code(e, p, i, batch_size);
 	}
 
 	__global ulong* R = registers + global_index * 32;

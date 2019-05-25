@@ -43,7 +43,7 @@ __kernel void fillAes1Rx4_name(__global void* state, __global void* out, uint ba
 	const uint s1 = (sub & 1) ? 8 : 24;
 	const uint s3 = (sub & 1) ? 24 : 8;
 
-	__global uint4* p = strided ? (((__global uint4*) out) + idx * 4 + sub) : (((__global uint4*) out) + idx * (outputSize / sizeof(uint4)) + sub);
+	__global uint4* p = strided ? (((__global uint4*) out) + idx * 4 + sub) : (((__global uint4*) out) + idx * (outputSize0 / sizeof(uint4)) + sub);
 
 	const __local uint* const t0 = (sub & 1) ? T : (T + 1024);
 	const __local uint* const t1 = (sub & 1) ? (T + 256) : (T + 1792);

@@ -549,24 +549,30 @@ __constant static const uint AES_STATE_HASH[16] = {
 
 uint get_byte(uint a, uint start_bit) { return (a >> start_bit) & 0xFF; }
 
+#include "randomx_constants.h"
+
 #define fillAes1Rx4_name fillAes1Rx4_scratchpad
 #define outputSize 2097152
-#define strided 1
+#define outputSize0 (outputSize + 64)
+#define strided SCRATCHPAD_STRIDED
 #define unroll_factor 8
 	#include "fillAes1Rx4.cl"
 #undef unroll_factor
 #undef strided
 #undef outputSize
+#undef outputSize0
 #undef fillAes1Rx4_name
 
 #define fillAes1Rx4_name fillAes1Rx4_entropy
 #define outputSize (128 + 2048)
+#define outputSize0 outputSize
 #define strided 0
 #define unroll_factor 2
 	#include "fillAes1Rx4.cl"
 #undef unroll_factor
 #undef strided
 #undef outputSize
+#undef outputSize0
 #undef fillAes1Rx4_name
 
 #define inputSize 2097152
@@ -596,7 +602,7 @@ __kernel void hashAes1Rx4(__global const void* input, __global void* hash, uint 
 	const uint s1 = ((sub & 1) == 0) ? 8 : 24;
 	const uint s3 = ((sub & 1) == 0) ? 24 : 8;
 
-	__global const uint4* p = ((__global uint4*) input) + idx * 4 + sub;
+	__global const uint4* p = SCRATCHPAD_STRIDED ? (((__global uint4*) input) + idx * 4 + sub) : (((__global uint4*) input) + idx * ((inputSize + 64) / sizeof(uint4)) + sub);
 
 	__local const uint* const t0 = ((sub & 1) == 0) ? T : (T + 1024);
 	__local const uint* const t1 = ((sub & 1) == 0) ? (T + 256) : (T + 1792);
@@ -604,7 +610,7 @@ __kernel void hashAes1Rx4(__global const void* input, __global void* hash, uint 
 	__local const uint* const t3 = ((sub & 1) == 0) ? (T + 768) : (T + 1280);
 
 	#pragma unroll(8)
-	for (uint i = 0; i < inputSize / sizeof(uint4); i += 4, p += stride_size)
+	for (uint i = 0; i < inputSize / sizeof(uint4); i += 4, p += SCRATCHPAD_STRIDED ? stride_size : 4)
 	{
 		uint k[4], y[4];
 		*(uint4*)(k) = *p;
