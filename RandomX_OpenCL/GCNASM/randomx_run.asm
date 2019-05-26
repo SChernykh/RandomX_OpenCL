@@ -27,7 +27,13 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 	.config
 		.dims x
 		.cws 64, 1, 1
-		.sgprsnum 32
+		.sgprsnum 96
+		# 6 waves per SIMD: 37-40 VGPRs
+		# 5 waves per SIMD: 41-48 VGPRs
+		# 4 waves per SIMD: 49-64 VGPRs
+		# 3 waves per SIMD: 65-84 VGPRs
+		# 2 waves per SIMD: 85-128 VGPRs
+		# 1 wave  per SIMD: 129-256 VGPRs
 		.vgprsnum 128
 		.localsize 256
 		.floatmode 0xc0
@@ -100,7 +106,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		v_mov_b32       v13, 0
 		v_mov_b32       v14, 0
 		s_mov_b64       exec, s[6:7]
-		s_lshl_b64      s[6:7], s[8:9], 16
+		s_lshl_b64      s[6:7], s[8:9], 14
 		v_add3_u32      v5, v0, v5, 64
 		s_mov_b64       s[8:9], exec
 		s_andn2_b64     exec, s[8:9], s[2:3]
@@ -232,22 +238,22 @@ main_loop:
 		s_swappc_b64    s[12:13], s[4:5]
 
 		# store VM integer registers
-		v_writelane_b32 v34, s16, 0
-		v_writelane_b32 v35, s17, 0
-		v_writelane_b32 v34, s18, 1
-		v_writelane_b32 v35, s19, 1
-		v_writelane_b32 v34, s20, 2
-		v_writelane_b32 v35, s21, 2
-		v_writelane_b32 v34, s22, 3
-		v_writelane_b32 v35, s23, 3
-		v_writelane_b32 v34, s24, 4
-		v_writelane_b32 v35, s25, 4
-		v_writelane_b32 v34, s26, 5
-		v_writelane_b32 v35, s27, 5
-		v_writelane_b32 v34, s28, 6
-		v_writelane_b32 v35, s29, 6
-		v_writelane_b32 v34, s30, 7
-		v_writelane_b32 v35, s31, 7
+		v_writelane_b32 v28, s16, 0
+		v_writelane_b32 v29, s17, 0
+		v_writelane_b32 v28, s18, 1
+		v_writelane_b32 v29, s19, 1
+		v_writelane_b32 v28, s20, 2
+		v_writelane_b32 v29, s21, 2
+		v_writelane_b32 v28, s22, 3
+		v_writelane_b32 v29, s23, 3
+		v_writelane_b32 v28, s24, 4
+		v_writelane_b32 v29, s25, 4
+		v_writelane_b32 v28, s26, 5
+		v_writelane_b32 v29, s27, 5
+		v_writelane_b32 v28, s28, 6
+		v_writelane_b32 v29, s29, 6
+		v_writelane_b32 v28, s30, 7
+		v_writelane_b32 v29, s31, 7
 
 		# Restore execution mask
 		s_mov_b32       s14, 0xff
@@ -255,10 +261,9 @@ main_loop:
 		s_mov_b64       exec, s[14:15]
 
 		# Write out VM integer registers
-		ds_write_b64    v17, v[34:35]
+		ds_write_b64    v17, v[28:29]
 
 		global_load_dwordx2 v[21:22], v[21:22], off
-		ds_read_b64     v[28:29], v17
 		s_waitcnt       vmcnt(0) & lgkmcnt(0)
 		v_xor_b32       v21, v28, v21
 		v_xor_b32       v22, v29, v22

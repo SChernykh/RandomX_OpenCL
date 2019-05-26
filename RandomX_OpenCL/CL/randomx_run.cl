@@ -20,9 +20,8 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 
 #include "randomx_constants.h"
 
-#define REGISTERS_COUNT 32
+#define REGISTERS_COUNT (REGISTERS_SIZE / 8)
 #define SCRATCHPAD_STRIDE_SIZE 64
-#define COMPILED_PROGRAM_SIZE 65536
 
 #define ScratchpadL3Mask64 ((1 << 21) - 64)
 
