@@ -42,19 +42,22 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 12.5*25 = 312.5 bytes on average
 #define RANDOMX_FREQ_IADD_RS       25
 
-// 54.5*7 = 381.5 bytes on average
+// 58.5*7 = 409.5 bytes on average
 #define RANDOMX_FREQ_IADD_M         7
 
 // 8.5*16 = 136 bytes on average
 #define RANDOMX_FREQ_ISUB_R        16
 
-// 54.5*7 = 381.5 bytes on average
+// 58.5*7 = 409.5 bytes on average
 #define RANDOMX_FREQ_ISUB_M         7
 
 // 25.5*16 = 408 bytes on average
 #define RANDOMX_FREQ_IMUL_R        16
 
-// Total: 1619.5 + 4(s_setpc_b64) = 1623.5 bytes on average
+// 74.5*4 = 298 bytes on average
+#define RANDOMX_FREQ_IMUL_M         4
+
+// Total: 1973.5 + 4(s_setpc_b64) = 1977.5 bytes on average
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -225,7 +228,7 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 			*(p++) = 0x82110f11u | (dst << 1) | (dst << 17);
 		}
 
-		// 24*7/8 + 12*1/8 + 28 + 4 = 54.5 bytes on average
+		// 24*7/8 + 12*1/8 + 28 + 8 = 58.5 bytes on average
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_IADD_M;
@@ -278,7 +281,7 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 			*(p++) = 0x82910f11u | (dst << 1) | (dst << 17);
 		}
 
-		// 24*7/8 + 12*1/8 + 28 + 4 = 54.5 bytes on average
+		// 24*7/8 + 12*1/8 + 28 + 8 = 58.5 bytes on average
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_ISUB_M;
@@ -334,6 +337,46 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 	}
 	opcode -= RANDOMX_FREQ_IMUL_R;
 
+	if (opcode < RANDOMX_FREQ_IMUL_M)
+	{
+		if (prefetch_vgpr_index >= 0)
+		{
+			if (src != dst) // p = 7/8
+				p = jit_scratchpad_calc_address(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask : ScratchpadL2Mask, batch_size);
+			else // p = 1/8
+				p = jit_scratchpad_calc_fixed_address(p, inst.y & ScratchpadL3Mask, batch_size);
+
+			p = jit_scratchpad_load(p, lane_index, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
+		}
+
+		if (prefetch_vgpr_index <= 0)
+		{
+			p = jit_scratchpad_load2(p, lane_index, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
+
+			// s_mul_hi_u32 s33, s(16 + dst * 2), s14
+			*(p++) = 0x96210e10u | (dst << 1);
+
+			// s_mul_i32 s32, s(16 + dst * 2), s15
+			*(p++) = 0x92200f10u | (dst << 1);
+
+			// s_add_u32 s33, s33, s32
+			*(p++) = 0x80212021u;
+
+			// s_mul_i32 s32, s(17 + dst * 2), s14
+			*(p++) = 0x92200e11u | (dst << 1);
+
+			// s_add_u32 s(17 + dst * 2), s33, s32
+			*(p++) = 0x80112021u | (dst << 17);
+
+			// s_mul_i32 s(16 + dst * 2), s(16 + dst * 2), s14
+			*(p++) = 0x92100e10u | (dst << 1) | (dst << 17);
+		}
+
+		// 24*7/8 + 12*1/8 + 28 + 24 = 74.5 bytes on average
+		return p;
+	}
+	opcode -= RANDOMX_FREQ_IMUL_M;
+
 	return p;
 }
 
@@ -343,6 +386,7 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 	uint registerWasChanged = 0;
 
 	int prefetch_data_count = 0;
+	#pragma unroll(1)
 	for (uint i = 0; i < RANDOMX_PROGRAM_SIZE; ++i)
 	{
 		uint2 inst = e[i];
@@ -399,10 +443,22 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 			continue;
 		}
 		opcode -= RANDOMX_FREQ_IMUL_R;
+
+		if (opcode < RANDOMX_FREQ_IMUL_M)
+		{
+			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+			registerWasChanged |= 1u << dst;
+			inst.x = srcAvailableAt;
+			inst.y = i;
+			p0[prefetch_data_count++] = inst;
+			continue;
+		}
+		opcode -= RANDOMX_FREQ_IMUL_M;
 	}
 
 	// Sort p0
 	uint prev = p0[0].x;
+	#pragma unroll(1)
 	for (int j = 1; j < prefetch_data_count; ++j)
 	{
 		uint2 cur = p0[j];
@@ -419,13 +475,18 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 		} while ((j1 >= 0) && (p0[j1].x >= cur.x));
 		p0[j1 + 1] = cur;
 	}
+	p0[prefetch_data_count].x = RANDOMX_PROGRAM_SIZE;
 
-	__global int* prefecth_vgprs_stack = (__global uint*)(p0 + RANDOMX_PROGRAM_SIZE);
-	int num_prefetch_vgprs = 16;
+	__global int* prefecth_vgprs_stack = (__global int*)(p0 + prefetch_data_count + 1);
+
+	enum { num_prefetch_vgprs = 16 };
+	#pragma unroll
 	for (int i = 0; i < num_prefetch_vgprs; ++i)
 		prefecth_vgprs_stack[i] = NUM_VGPR_REGISTERS - 2 - i * 2;
 
 	__global int* prefetched_vgprs = prefecth_vgprs_stack + num_prefetch_vgprs;
+
+	#pragma unroll
 	for (int i = 0; i < RANDOMX_PROGRAM_SIZE; ++i)
 		prefetched_vgprs[i] = 0;
 
@@ -433,28 +494,29 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 	uint2 prefetch_data = p0[0];
 	int mem_counter = 0;
 	int s_waitcnt_value = 100;
+	int num_prefetch_vgprs_available = num_prefetch_vgprs;
+
+	#pragma unroll(1)
 	for (int i = 0; i < RANDOMX_PROGRAM_SIZE; ++i)
 	{
-		if ((k < prefetch_data_count) && (prefetch_data.x == i) && (num_prefetch_vgprs > 0))
+		while ((prefetch_data.x == i) && (num_prefetch_vgprs_available > 0))
 		{
-			do {
-				++mem_counter;
-				const int vgpr_id = prefecth_vgprs_stack[--num_prefetch_vgprs];
-				prefetched_vgprs[prefetch_data.y] = vgpr_id | (mem_counter << 16);
+			++mem_counter;
+			const int vgpr_id = prefecth_vgprs_stack[--num_prefetch_vgprs_available];
+			prefetched_vgprs[prefetch_data.y] = vgpr_id | (mem_counter << 16);
 
-				p = jit_emit_instruction(p, e[prefetch_data.y], vgpr_id, mem_counter, lane_index, batch_size);
-				s_waitcnt_value = 100;
+			p = jit_emit_instruction(p, e[prefetch_data.y], vgpr_id, mem_counter, lane_index, batch_size);
+			s_waitcnt_value = 100;
 
-				++k;
-				prefetch_data = p0[k];
-			} while ((k < prefetch_data_count) && (prefetch_data.x == i) && (num_prefetch_vgprs > 0));
+			++k;
+			prefetch_data = p0[k];
 		}
 
 		const int prefetched_vgprs_data = prefetched_vgprs[i];
 		const int vgpr_id = prefetched_vgprs_data & 0xFFFF;
 		const int prev_mem_counter = prefetched_vgprs_data >> 16;
 		if (vgpr_id)
-			prefecth_vgprs_stack[num_prefetch_vgprs++] = vgpr_id;
+			prefecth_vgprs_stack[num_prefetch_vgprs_available++] = vgpr_id;
 
 		const int vmcnt = mem_counter - prev_mem_counter;
 		p = jit_emit_instruction(p, e[i], -vgpr_id, (vmcnt < s_waitcnt_value) ? vmcnt : -1, lane_index, batch_size);
