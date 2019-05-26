@@ -122,20 +122,20 @@ __global uint* jit_scratchpad_calc_fixed_address(__global uint* p, uint imm32, u
 __global uint* jit_scratchpad_load(__global uint* p, uint index)
 {
 	// v39 = 0
-	// global_load_dwordx2 v[4:5], v39, s[14:15]
+	// global_load_dwordx2 v[28:29], v39, s[14:15]
 	*(p++) = 0xdc548000u;
-	*(p++) = 0x040e0027u;
+	*(p++) = 0x1c0e0027u;
 
 	// s_waitcnt vmcnt(0)
 	*(p++) = 0xbf8c0f70u;
 
-	// v_readlane_b32 s14, v4, index * 16
+	// v_readlane_b32 s14, v28, index * 16
 	*(p++) = 0xd289000eu;
-	*(p++) = 0x00010104u | (index << 13);
+	*(p++) = 0x0001011cu | (index << 13);
 
-	// v_readlane_b32 s15, v5, index * 16
+	// v_readlane_b32 s15, v29, index * 16
 	*(p++) = 0xd289000fu;
-	*(p++) = 0x00010105u | (index << 13);
+	*(p++) = 0x0001011du | (index << 13);
 
 	return p;
 }
@@ -298,7 +298,11 @@ __global uint* generate_jit_code(__global const uint2* e, __global uint* p, uint
 	}
 
 	// Jump back to randomx_run kernel
-	*(p++) = 0xbe8e1e0cu; // s_swappc_b64 s[14:15], s[12:13]
+	#if HASHES_PER_GROUP > 1
+		*(p++) = 0xbe8e1e0cu; // s_swappc_b64 s[14:15], s[12:13]
+	#else
+		*(p++) = 0xbe801d0cu; // s_setpc_b64 s[12:13]
+	#endif
 
 	return p;
 }

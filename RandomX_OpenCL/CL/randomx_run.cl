@@ -20,9 +20,6 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 
 #include "randomx_constants.h"
 
-#define LOCAL_GROUP_SIZE 64
-#define WORKERS_PER_HASH 16
-#define HASHES_PER_GROUP (LOCAL_GROUP_SIZE / WORKERS_PER_HASH)
 #define REGISTERS_COUNT 32
 #define SCRATCHPAD_STRIDE_SIZE 64
 #define COMPILED_PROGRAM_SIZE 65536
@@ -120,7 +117,7 @@ __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratch
 		// 5) ???
 		// 6) PROFIT!!!
 
-		//atomic_inc(programs);
+		atomic_inc(programs);
 
 #if 0
 		// memory access benchmark

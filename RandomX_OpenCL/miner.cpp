@@ -216,7 +216,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 
 	const size_t global_work_size = intensity;
 	const size_t global_work_size4 = intensity * 4;
-	const size_t global_work_size16 = intensity * 16;
+	const size_t global_work_size64 = intensity * 64;
 	const size_t local_work_size = 64;
 	const uint32_t zero = 0;
 
@@ -295,7 +295,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 			//	fwrite(buf.data(), 1, buf.size(), fp);
 			//	fclose(fp);
 			//}
-			CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_run, 1, nullptr, &global_work_size16, &local_work_size, 0, nullptr, nullptr);
+			CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_run, 1, nullptr, &global_work_size64, &local_work_size, 0, nullptr, nullptr);
 
 			if (i == RANDOMX_PROGRAM_COUNT - 1)
 			{
