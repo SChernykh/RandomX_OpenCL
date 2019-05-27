@@ -57,7 +57,37 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 74.5*4 = 298 bytes on average
 #define RANDOMX_FREQ_IMUL_M         4
 
-// Total: 1973.5 + 4(s_setpc_b64) = 1977.5 bytes on average
+// 80*4 = 320 bytes
+#define RANDOMX_FREQ_IMULH_R        4
+
+// 130.5*1 = 130.5 bytes on average
+#define RANDOMX_FREQ_IMULH_M        1
+
+// 112*4 = 448 bytes
+#define RANDOMX_FREQ_ISMULH_R       4
+
+// 162.5*4 = 162.5 bytes on average
+#define RANDOMX_FREQ_ISMULH_M       1
+
+// 36*8 = 288 bytes
+#define RANDOMX_FREQ_IMUL_RCP       8
+
+// 12*2 = 24 bytes
+#define RANDOMX_FREQ_INEG_R         2
+
+// 5.5*15 = 82.5 bytes
+#define RANDOMX_FREQ_IXOR_R        15
+
+// 54.5*5 = 272.5 bytes on average
+#define RANDOMX_FREQ_IXOR_M         5
+
+// 19*10 = 190 bytes on average
+#define RANDOMX_FREQ_IROR_R        10
+
+// 10.5*4 = 42 bytes on average
+#define RANDOMX_FREQ_ISWAP_R        4
+
+// Total: 3933.5 + 4(s_setpc_b64) = 3937.5 bytes on average
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -158,6 +188,25 @@ __global uint* jit_scratchpad_load2(__global uint* p, uint lane_index, uint vgpr
 	*(p++) = 0x00010100u | (lane_index << 13) | (vgpr_index + 1);
 
 	return p;
+}
+
+ulong imul_rcp_value(uint divisor)
+{
+	const ulong p2exp63 = 1ULL << 63;
+
+	ulong quotient = p2exp63 / divisor;
+	ulong remainder = p2exp63 % divisor;
+
+	const uint bsr = 31 - clz(divisor);
+
+	for (uint shift = 0; shift <= bsr; ++shift)
+	{
+		const bool b = (remainder >= divisor - remainder);
+		quotient = (quotient << 1) | (b ? 1 : 0);
+		remainder = (remainder << 1) - (b ? divisor : 0);
+	}
+
+	return quotient;
 }
 
 __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int prefetch_vgpr_index, int vmcnt, uint lane_index, uint batch_size)
@@ -377,6 +426,296 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 	}
 	opcode -= RANDOMX_FREQ_IMUL_M;
 
+	if (opcode < RANDOMX_FREQ_IMULH_R)
+	{
+		*(p++) = 0x7e520280u;						// v_mov_b32       v41, 0
+		*(p++) = 0x7e580280u;						// v_mov_b32       v44, 0
+		*(p++) = 0x7e5a0210u | (dst << 1);			// v_mov_b32       v45, s(16 + dst * 2)
+		*(p++) = 0xd2860028u;						// v_mul_hi_u32    v40, s(16 + src * 2), v45
+		*(p++) = 0x00025a10u | (src << 1);
+		*(p++) = 0x7e5e0211u | (dst << 1);			// v_mov_b32       v47, s(17 + dst * 2)
+		*(p++) = 0xd1e8202au;						// v_mad_u64_u32   v[42:43], s[32:33], s(16 + src * 2), v47, v[40:41]
+		*(p++) = 0x04a25e10u | (src << 1);
+		*(p++) = 0x7e50032au;						// v_mov_b32       v40, v42
+		*(p++) = 0xd1e8202du;						// v_mad_u64_u32   v[45:46], s[32:33], s(17 + src * 2), v45, v[40:41]
+		*(p++) = 0x04a25a11u | (src << 1);
+		*(p++) = 0xd1e8202au;						// v_mad_u64_u32   v[42:43], s[32:33], s(17 + src * 2), v47, v[43:44]
+		*(p++) = 0x04ae5e11u | (src << 1);
+		*(p++) = 0x7e50032eu;						// v_mov_b32       v40, v46
+		*(p++) = 0x3254512au;						// v_add_co_u32    v42, vcc, v42, v40
+		*(p++) = 0x38565680u;						// v_addc_co_u32   v43, vcc, 0, v43, vcc
+		*(p++) = 0xd2890010u | (dst << 1);			// v_readlane_b32  s(16 + dst * 2), v42, lane_index * 16
+		*(p++) = 0x0001012au | (lane_index << 13);
+		*(p++) = 0xd2890011u | (dst << 1);			// v_readlane_b32  s(17 + dst * 2), v43, lane_index * 16
+		*(p++) = 0x0001012bu | (lane_index << 13);
+
+		// 80 bytes
+		return p;
+	}
+	opcode -= RANDOMX_FREQ_IMULH_R;
+
+	if (opcode < RANDOMX_FREQ_IMULH_M)
+	{
+		if (prefetch_vgpr_index >= 0)
+		{
+			if (src != dst) // p = 7/8
+				p = jit_scratchpad_calc_address(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask : ScratchpadL2Mask, batch_size);
+			else // p = 1/8
+				p = jit_scratchpad_calc_fixed_address(p, inst.y & ScratchpadL3Mask, batch_size);
+
+			p = jit_scratchpad_load(p, lane_index, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
+		}
+
+		if (prefetch_vgpr_index <= 0)
+		{
+			p = jit_scratchpad_load2(p, lane_index, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
+
+			*(p++) = 0x7e520280u;						// v_mov_b32       v41, 0
+			*(p++) = 0x7e580280u;						// v_mov_b32       v44, 0
+			*(p++) = 0x7e5a0210u | (dst << 1);			// v_mov_b32       v45, s(16 + dst * 2)
+			*(p++) = 0xd2860028u;						// v_mul_hi_u32    v40, s14, v45
+			*(p++) = 0x00025a0eu;
+			*(p++) = 0x7e5e0211u | (dst << 1);			// v_mov_b32       v47, s(17 + dst * 2)
+			*(p++) = 0xd1e8202au;						// v_mad_u64_u32   v[42:43], s[32:33], s14, v47, v[40:41]
+			*(p++) = 0x04a25e0eu;
+			*(p++) = 0x7e50032au;						// v_mov_b32       v40, v42
+			*(p++) = 0xd1e8202du;						// v_mad_u64_u32   v[45:46], s[32:33], s15, v45, v[40:41]
+			*(p++) = 0x04a25a0fu;
+			*(p++) = 0xd1e8202au;						// v_mad_u64_u32   v[42:43], s[32:33], s15, v47, v[43:44]
+			*(p++) = 0x04ae5e0fu;
+			*(p++) = 0x7e50032eu;						// v_mov_b32       v40, v46
+			*(p++) = 0x3254512au;						// v_add_co_u32    v42, vcc, v42, v40
+			*(p++) = 0x38565680u;						// v_addc_co_u32   v43, vcc, 0, v43, vcc
+			*(p++) = 0xd2890010u | (dst << 1);			// v_readlane_b32  s(16 + dst * 2), v42, lane_index * 16
+			*(p++) = 0x0001012au | (lane_index << 13);
+			*(p++) = 0xd2890011u | (dst << 1);			// v_readlane_b32  s(17 + dst * 2), v43, lane_index * 16
+			*(p++) = 0x0001012bu | (lane_index << 13);
+		}
+
+		// 24*7/8 + 12*1/8 + 28 + 80 = 130.5 bytes on average
+		return p;
+	}
+	opcode -= RANDOMX_FREQ_IMULH_M;
+
+	if (opcode < RANDOMX_FREQ_ISMULH_R)
+	{
+		*(p++) = 0x7e520280u;						// v_mov_b32       v41, 0
+		*(p++) = 0x7e580280u;						// v_mov_b32       v44, 0
+		*(p++) = 0x7e5a0210u | (dst << 1);			// v_mov_b32       v45, s(16 + dst * 2)
+		*(p++) = 0xd2860028u;						// v_mul_hi_u32    v40, s(16 + src * 2), v45
+		*(p++) = 0x00025a10u | (src << 1);
+		*(p++) = 0x7e5e0211u | (dst << 1);			// v_mov_b32       v47, s(17 + dst * 2)
+		*(p++) = 0xd1e8202au;						// v_mad_u64_u32   v[42:43], s[32:33], s(16 + src * 2), v47, v[40:41]
+		*(p++) = 0x04a25e10u | (src << 1);
+		*(p++) = 0x7e50032au;						// v_mov_b32       v40, v42
+		*(p++) = 0xd1e8202du;						// v_mad_u64_u32   v[45:46], s[32:33], s(17 + src * 2), v45, v[40:41]
+		*(p++) = 0x04a25a11u | (src << 1);
+		*(p++) = 0xd1e8202au;						// v_mad_u64_u32   v[42:43], s[32:33], s(17 + src * 2), v47, v[43:44]
+		*(p++) = 0x04ae5e11u | (src << 1);
+		*(p++) = 0x7e50032eu;						// v_mov_b32       v40, v46
+		*(p++) = 0x3254512au;						// v_add_co_u32    v42, vcc, v42, v40
+		*(p++) = 0x38565680u;						// v_addc_co_u32   v43, vcc, 0, v43, vcc
+		*(p++) = 0xd2890020u;						// v_readlane_b32  s32, v42, lane_index * 16
+		*(p++) = 0x0001012au | (lane_index << 13);
+		*(p++) = 0xd2890021u;						// v_readlane_b32  s33, v43, lane_index * 16
+		*(p++) = 0x0001012bu | (lane_index << 13);
+		*(p++) = 0xbf048011u | (dst << 1);			// s_cmp_lt_i32    s(17 + dst * 2), 0
+		*(p++) = 0x85a28010u | (src << 1);			// s_cselect_b64   s[34:35], s[16 + src * 2:17 + src * 2], 0
+		*(p++) = 0x80a02220u;						// s_sub_u32       s32, s32, s34
+		*(p++) = 0x82a12321u;						// s_subb_u32      s33, s33, s35
+		*(p++) = 0xbf048011u | (src << 1);			// s_cmp_lt_i32    s(17 + src * 2), 0
+		*(p++) = 0x85a28010u | (dst << 1);			// s_cselect_b64   s[34:35], s[16 + dst * 2:17 + dst * 2], 0
+		*(p++) = 0x80902220u | (dst << 17);			// s_sub_u32       s(16 + dst * 2), s32, s34
+		*(p++) = 0x82912321u | (dst << 17);			// s_subb_u32      s(17 + dst * 2), s33, s35
+
+		// 112 bytes
+		return p;
+	}
+	opcode -= RANDOMX_FREQ_ISMULH_R;
+
+	if (opcode < RANDOMX_FREQ_ISMULH_M)
+	{
+		if (prefetch_vgpr_index >= 0)
+		{
+			if (src != dst) // p = 7/8
+				p = jit_scratchpad_calc_address(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask : ScratchpadL2Mask, batch_size);
+			else // p = 1/8
+				p = jit_scratchpad_calc_fixed_address(p, inst.y & ScratchpadL3Mask, batch_size);
+
+			p = jit_scratchpad_load(p, lane_index, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
+		}
+
+		if (prefetch_vgpr_index <= 0)
+		{
+			p = jit_scratchpad_load2(p, lane_index, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
+
+			*(p++) = 0x7e520280u;						// v_mov_b32       v41, 0
+			*(p++) = 0x7e580280u;						// v_mov_b32       v44, 0
+			*(p++) = 0x7e5a0210u | (dst << 1);			// v_mov_b32       v45, s(16 + dst * 2)
+			*(p++) = 0xd2860028u;						// v_mul_hi_u32    v40, s14, v45
+			*(p++) = 0x00025a0eu;
+			*(p++) = 0x7e5e0211u | (dst << 1);			// v_mov_b32       v47, s(17 + dst * 2)
+			*(p++) = 0xd1e8202au;						// v_mad_u64_u32   v[42:43], s[32:33], s14, v47, v[40:41]
+			*(p++) = 0x04a25e0eu;
+			*(p++) = 0x7e50032au;						// v_mov_b32       v40, v42
+			*(p++) = 0xd1e8202du;						// v_mad_u64_u32   v[45:46], s[32:33], s15, v45, v[40:41]
+			*(p++) = 0x04a25a0fu;
+			*(p++) = 0xd1e8202au;						// v_mad_u64_u32   v[42:43], s[32:33], s15, v47, v[43:44]
+			*(p++) = 0x04ae5e0fu;
+			*(p++) = 0x7e50032eu;						// v_mov_b32       v40, v46
+			*(p++) = 0x3254512au;						// v_add_co_u32    v42, vcc, v42, v40
+			*(p++) = 0x38565680u;						// v_addc_co_u32   v43, vcc, 0, v43, vcc
+			*(p++) = 0xd2890020u;						// v_readlane_b32  s32, v42, lane_index * 16
+			*(p++) = 0x0001012au | (lane_index << 13);
+			*(p++) = 0xd2890021u;						// v_readlane_b32  s33, v43, lane_index * 16
+			*(p++) = 0x0001012bu | (lane_index << 13);
+			*(p++) = 0xbf048011u | (dst << 1);			// s_cmp_lt_i32    s(17 + dst * 2), 0
+			*(p++) = 0x85a2800eu;						// s_cselect_b64   s[34:35], s[14:15], 0
+			*(p++) = 0x80a02220u;						// s_sub_u32       s32, s32, s34
+			*(p++) = 0x82a12321u;						// s_subb_u32      s33, s33, s35
+			*(p++) = 0xbf04800fu;						// s_cmp_lt_i32    s15, 0
+			*(p++) = 0x85a28010u | (dst << 1);			// s_cselect_b64   s[34:35], s[16 + dst * 2:17 + dst * 2], 0
+			*(p++) = 0x80902220u | (dst << 17);			// s_sub_u32       s(16 + dst * 2), s32, s34
+			*(p++) = 0x82912321u | (dst << 17);			// s_subb_u32      s(17 + dst * 2), s33, s35
+		}
+
+		// 24*7/8 + 12*1/8 + 28 + 112 = 162.5 bytes on average
+		return p;
+	}
+	opcode -= RANDOMX_FREQ_ISMULH_M;
+
+	if (opcode < RANDOMX_FREQ_IMUL_RCP)
+	{
+		if (inst.y & (inst.y - 1))
+		{
+			const uint2 rcp_value = as_uint2(imul_rcp_value(inst.y));
+
+			*(p++) = 0xbea000ffu;							// s_mov_b32       s32, imm32
+			*(p++) = rcp_value.x;
+			*(p++) = 0x960f2010u | (dst << 1);				// s_mul_hi_u32    s15, s(16 + dst * 2), s32
+			*(p++) = 0x920eff10u | (dst << 1);				// s_mul_i32       s14, s(16 + dst * 2), imm32
+			*(p++) = rcp_value.y;
+			*(p++) = 0x800f0e0fu;							// s_add_u32       s15, s15, s14
+			*(p++) = 0x920e2011u | (dst << 1);				// s_mul_i32       s14, s(17 + dst * 2), s32
+			*(p++) = 0x80110e0fu | (dst << 17);				// s_add_u32       s(17 + dst * 2), s15, s14
+			*(p++) = 0x92102010u | (dst << 1) | (dst << 17);// s_mul_i32       s(16 + dst * 2), s(16 + dst * 2), s32
+		}
+
+		// 36 bytes
+		return p;
+	}
+	opcode -= RANDOMX_FREQ_IMUL_RCP;
+
+	if (opcode < RANDOMX_FREQ_INEG_R)
+	{
+		*(p++) = 0xbe900510u | (dst << 1) | (dst << 17);	// s_not_b64       s[16 + dst * 2:17 + dst * 2], s[16 + dst * 2:17 + dst * 2]
+		*(p++) = 0x80108110u | (dst << 1) | (dst << 17);	// s_add_u32       s(16 + dst * 2), s(16 + dst * 2), 1
+		*(p++) = 0x82118011u | (dst << 1) | (dst << 17);	// s_addc_u32      s(17 + dst * 2), s(17 + dst * 2), 0
+
+		// 12 bytes
+		return p;
+	}
+	opcode -= RANDOMX_FREQ_INEG_R;
+
+	if (opcode < RANDOMX_FREQ_IXOR_R)
+	{
+		if (src != dst) // p = 7/8
+		{
+			// s_xor_b64 s[16 + dst * 2:17 + dst * 2], s[16 + dst * 2:17 + dst * 2], s[16 + src * 2:17 + src * 2]
+			*(p++) = 0x88901010u | (dst << 1) | (dst << 17) | (src << 9);
+		}
+		else // p = 1/8
+		{
+			// s_mov_b32 s32, imm32
+			*(p++) = 0xbea000ffu;
+			*(p++) = inst.y;
+
+			// s_mov_b32 s32, (inst.y < 0) ? -1 : 0
+			*(p++) = 0xbea10000u | ((as_int(inst.y) < 0) ? 0xc1 : 0x80);
+
+			// s_xor_b64 s[16 + dst * 2:17 + dst * 2], s[16 + dst * 2:17 + dst * 2], s[32:33]
+			*(p++) = 0x88902010u | (dst << 1) | (dst << 17);
+		}
+
+		// 4*7/8 + 16/8 = 5.5 bytes on average
+		return p;
+	}
+	opcode -= RANDOMX_FREQ_IXOR_R;
+
+	if (opcode < RANDOMX_FREQ_IXOR_M)
+	{
+		if (prefetch_vgpr_index >= 0)
+		{
+			if (src != dst) // p = 7/8
+				p = jit_scratchpad_calc_address(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask : ScratchpadL2Mask, batch_size);
+			else // p = 1/8
+				p = jit_scratchpad_calc_fixed_address(p, inst.y & ScratchpadL3Mask, batch_size);
+
+			p = jit_scratchpad_load(p, lane_index, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
+		}
+
+		if (prefetch_vgpr_index <= 0)
+		{
+			p = jit_scratchpad_load2(p, lane_index, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
+
+			// s_xor_b64 s[16 + dst * 2:17 + dst * 2], s[16 + dst * 2:17 + dst * 2], s[14:15]
+			*(p++) = 0x88900e10u | (dst << 1) | (dst << 17);
+		}
+
+		// 24*7/8 + 12*1/8 + 28 + 4 = 54.5 bytes on average
+		return p;
+	}
+	opcode -= RANDOMX_FREQ_IXOR_M;
+
+	if (opcode < RANDOMX_FREQ_IROR_R)
+	{
+		if (src != dst) // p = 7/8
+		{
+			// s_lshr_b64 s[32:33], s[16 + dst * 2:17 + dst * 2], s(16 + src * 2)
+			*(p++) = 0x8fa01010u | (dst << 1) | (src << 9);
+
+			// s_mov_b32 s14, 64
+			*(p++) = 0xbe8e00c0u;
+
+			// s_sub_u32  s15, s14, s(16 + src * 2)
+			*(p++) = 0x808f100eu | (src << 9);
+
+			// s_lshl_b64 s[34:35], s[16 + dst * 2:17 + dst * 2], s15
+			*(p++) = 0x8ea20f10u | (dst << 1);
+		}
+		else // p = 1/8
+		{
+			const uint shift = inst.y & 63;
+
+			// s_lshr_b64 s[32:33], s[16 + dst * 2:17 + dst * 2], shift
+			*(p++) = 0x8fa08010u | (dst << 1) | (shift << 8);
+
+			// s_lshl_b64 s[34:35], s[16 + dst * 2:17 + dst * 2], 0
+			*(p++) = 0x8ea28010u | (dst << 1) | ((64 - shift) << 8);
+		}
+
+		// s_or_b64 s[16 + dst * 2:17 + dst * 2], s[32:33], s[34:35]
+		*(p++) = 0x87902220u | (dst << 17);
+
+		// 16*7/8 + 8/8 + 4 = 19 bytes on average
+		return p;
+	}
+	opcode -= RANDOMX_FREQ_IROR_R;
+
+	if (opcode < RANDOMX_FREQ_ISWAP_R)
+	{
+		if (src != dst)
+		{
+			*(p++) = 0xbea00110u | (dst << 1);				// s_mov_b64       s[32:33], s[16 + dst * 2:17 + dst * 2]
+			*(p++) = 0xbe900110u | (src << 1) | (dst << 17);// s_mov_b64       s[16 + dst * 2:17 + dst * 2], s[16 + src * 2:17 + src * 2]
+			*(p++) = 0xbe900120u | (src << 17);				// s_mov_b64       s[16 + src * 2:17 + Src * 2], s[32:33]
+		}
+
+		// 12*7/8 = 10.5 bytes on average
+		return p;
+	}
+	opcode -= RANDOMX_FREQ_ISWAP_R;
+
 	return p;
 }
 
@@ -454,6 +793,94 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 			continue;
 		}
 		opcode -= RANDOMX_FREQ_IMUL_M;
+
+		if (opcode < RANDOMX_FREQ_IMULH_R)
+		{
+			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+			registerWasChanged |= 1u << dst;
+			continue;
+		}
+		opcode -= RANDOMX_FREQ_IMULH_R;
+
+		if (opcode < RANDOMX_FREQ_IMULH_M)
+		{
+			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+			registerWasChanged |= 1u << dst;
+			inst.x = (src == dst) ? 0 : srcAvailableAt;
+			inst.y = i;
+			p0[prefetch_data_count++] = inst;
+			continue;
+		}
+		opcode -= RANDOMX_FREQ_IMULH_M;
+
+		if (opcode < RANDOMX_FREQ_ISMULH_R)
+		{
+			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+			registerWasChanged |= 1u << dst;
+			continue;
+		}
+		opcode -= RANDOMX_FREQ_ISMULH_R;
+
+		if (opcode < RANDOMX_FREQ_ISMULH_M)
+		{
+			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+			registerWasChanged |= 1u << dst;
+			inst.x = (src == dst) ? 0 : srcAvailableAt;
+			inst.y = i;
+			p0[prefetch_data_count++] = inst;
+			continue;
+		}
+		opcode -= RANDOMX_FREQ_ISMULH_M;
+
+		if (opcode < RANDOMX_FREQ_IMUL_RCP)
+		{
+			if (inst.y & (inst.y - 1))
+			{
+				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+				registerWasChanged |= 1u << dst;
+			}
+			continue;
+		}
+		opcode -= RANDOMX_FREQ_IMUL_RCP;
+
+		if (opcode < RANDOMX_FREQ_INEG_R + RANDOMX_FREQ_IXOR_R)
+		{
+			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+			registerWasChanged |= 1u << dst;
+			continue;
+		}
+		opcode -= RANDOMX_FREQ_INEG_R + RANDOMX_FREQ_IXOR_R;
+
+		if (opcode < RANDOMX_FREQ_IXOR_M)
+		{
+			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+			registerWasChanged |= 1u << dst;
+			inst.x = (src == dst) ? 0 : srcAvailableAt;
+			inst.y = i;
+			p0[prefetch_data_count++] = inst;
+			continue;
+		}
+		opcode -= RANDOMX_FREQ_IXOR_M;
+
+		if (opcode < RANDOMX_FREQ_IROR_R)
+		{
+			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+			registerWasChanged |= 1u << dst;
+			continue;
+		}
+		opcode -= RANDOMX_FREQ_IROR_R;
+
+		if (opcode < RANDOMX_FREQ_ISWAP_R)
+		{
+			if (src != dst)
+			{
+				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+				registerLastChanged = (registerLastChanged & ~(0xFFul << (src * 8))) | ((ulong)(i) << (src * 8));
+				registerWasChanged |= (1u << dst) | (1u << src);
+			}
+			continue;
+		}
+		opcode -= RANDOMX_FREQ_ISWAP_R;
 	}
 
 	// Sort p0
