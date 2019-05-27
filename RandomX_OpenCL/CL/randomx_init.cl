@@ -410,7 +410,7 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 		{
 			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 			registerWasChanged |= 1u << dst;
-			inst.x = srcAvailableAt;
+			inst.x = (src == dst) ? 0 : srcAvailableAt;
 			inst.y = i;
 			p0[prefetch_data_count++] = inst;
 			continue;
@@ -429,7 +429,7 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 		{
 			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 			registerWasChanged |= 1u << dst;
-			inst.x = srcAvailableAt;
+			inst.x = (src == dst) ? 0 : srcAvailableAt;
 			inst.y = i;
 			p0[prefetch_data_count++] = inst;
 			continue;
@@ -448,7 +448,7 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 		{
 			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 			registerWasChanged |= 1u << dst;
-			inst.x = srcAvailableAt;
+			inst.x = (src == dst) ? 0 : srcAvailableAt;
 			inst.y = i;
 			p0[prefetch_data_count++] = inst;
 			continue;
