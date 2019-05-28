@@ -268,9 +268,8 @@ main_loop:
 		s_waitcnt       vmcnt(0) & lgkmcnt(0)
 		v_xor_b32       v21, v28, v21
 		v_xor_b32       v22, v29, v22
-		ds_read_b64     v[28:29], v7
-		s_waitcnt       lgkmcnt(0)
-		ds_read_b64     v[29:30], v8
+		ds_read_b32     v28, v7
+		ds_read_b32     v29, v8
 		ds_write_b64    v17, v[21:22]
 		s_waitcnt       lgkmcnt(1)
 		ds_read2_b64    v[30:33], v17 offset0:8 offset1:16
