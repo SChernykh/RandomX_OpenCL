@@ -91,8 +91,9 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		# Base address for strided scratchpads
 		#v_lshlrev_b32   v2, 6, v2
 
-		# v39 = 0
-		v_mov_b32       v39, 0
+		# v41, v44 = 0
+		v_mov_b32       v41, 0
+		v_mov_b32       v44, 0
 
 		ds_read_b32     v6, v0 offset:152
 		v_cmp_lt_u32    s[2:3], v1, 4
