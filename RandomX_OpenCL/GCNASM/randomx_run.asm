@@ -150,14 +150,19 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		# Scratchpad masks for strided scratchpads
 		#v_mov_b32       v38, 16320
 		#v_mov_b32       v39, 262080
+		#v_mov_b32       v48, 2097088
 
 		# Scratchpad masks for non-strided scratchpads
 		v_mov_b32       v38, 16376
 		v_mov_b32       v39, 262136
+		v_mov_b32       v48, 2097144
 
 		# load scratchpad base address
 		v_readlane_b32	s0, v2, 0
 		v_readlane_b32	s1, v18, 0
+
+		# save current executiom mask
+		s_mov_b64       s[36:37], exec
 
 main_loop:
 		# const uint2 spMix = as_uint2(R[readReg0] ^ R[readReg1]);
@@ -265,9 +270,7 @@ main_loop:
 		v_writelane_b32 v29, s31, 7
 
 		# Restore execution mask
-		s_mov_b32       s14, 0xff
-		s_mov_b32       s15, 0
-		s_mov_b64       exec, s[14:15]
+		s_mov_b64       exec, s[36:37]
 
 		# Write out VM integer registers
 		ds_write_b64    v17, v[28:29]

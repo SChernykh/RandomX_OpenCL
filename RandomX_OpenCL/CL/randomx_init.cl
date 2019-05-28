@@ -37,6 +37,8 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 
 #define ScratchpadL1Mask_reg 38
 #define ScratchpadL2Mask_reg 39
+#define ScratchpadL3Mask_reg 48
+
 #define ScratchpadL3Mask 2097144
 
 // 12.5*25 = 312.5 bytes on average
@@ -87,7 +89,10 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 10.5*4 = 42 bytes on average
 #define RANDOMX_FREQ_ISWAP_R        4
 
-// Total: 3530.5 + 4(s_setpc_b64) = 3534.5 bytes on average
+// 28*16 = 448 bytes
+#define RANDOMX_FREQ_ISTORE        16
+
+// Total: 3978.5 + 4(s_setpc_b64) = 3982.5 bytes on average
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -689,6 +694,25 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 	}
 	opcode -= RANDOMX_FREQ_ISWAP_R;
 
+	if (opcode < RANDOMX_FREQ_ISTORE)
+	{
+		const uint mask = ((mod >> 4) < 14) ? ((mod % 4) ? ScratchpadL1Mask_reg : ScratchpadL2Mask_reg) : ScratchpadL3Mask_reg;
+		p = jit_scratchpad_calc_address(p, dst, inst.y, mask, batch_size);
+
+		const uint vgpr_id = 50;
+		*(p++) = 0x7e000210u | (src << 1) | (vgpr_id << 17);	// v_mov_b32       vgpr_id, s(16 + src * 2)
+		*(p++) = 0x7e020211u | (src << 1) | (vgpr_id << 17);	// v_mov_b32       vgpr_id + 1, s(17 + src * 2)
+
+		// v28 = offset
+		// global_store_dwordx2 v28, v[vgpr_id:vgpr_id + 1], s[0:1]
+		*(p++) = 0xdc748000u;
+		*(p++) = 0x0000001cu | (vgpr_id << 8);
+
+		// 28 bytes
+		return p;
+	}
+	opcode -= RANDOMX_FREQ_ISTORE;
+
 	return p;
 }
 
@@ -697,10 +721,16 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 	ulong registerLastChanged = 0;
 	uint registerWasChanged = 0;
 
+	uint scratchpadAvailableAt = 0;
+	uint scratchpadHighAvailableAt = 0;
+
 	int prefetch_data_count = 0;
 	#pragma unroll(1)
 	for (uint i = 0; i < RANDOMX_PROGRAM_SIZE; ++i)
 	{
+		// Clean flags
+		e[i].x &= ~(0xf8u << 8);
+
 		uint2 inst = e[i];
 		uint opcode = inst.x & 0xFF;
 		const uint dst = (inst.x >> 8) & 7;
@@ -722,7 +752,7 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 		{
 			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 			registerWasChanged |= 1u << dst;
-			inst.x = (src == dst) ? 0 : srcAvailableAt;
+			inst.x = (src == dst) ? (((inst.y & ScratchpadL3Mask) >= 262144) ? scratchpadHighAvailableAt : scratchpadAvailableAt) : max(scratchpadAvailableAt, srcAvailableAt);
 			inst.y = i;
 			p0[prefetch_data_count++] = inst;
 			continue;
@@ -741,7 +771,7 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 		{
 			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 			registerWasChanged |= 1u << dst;
-			inst.x = (src == dst) ? 0 : srcAvailableAt;
+			inst.x = (src == dst) ? (((inst.y & ScratchpadL3Mask) >= 262144) ? scratchpadHighAvailableAt : scratchpadAvailableAt) : max(scratchpadAvailableAt, srcAvailableAt);
 			inst.y = i;
 			p0[prefetch_data_count++] = inst;
 			continue;
@@ -760,7 +790,7 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 		{
 			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 			registerWasChanged |= 1u << dst;
-			inst.x = (src == dst) ? 0 : srcAvailableAt;
+			inst.x = (src == dst) ? (((inst.y & ScratchpadL3Mask) >= 262144) ? scratchpadHighAvailableAt : scratchpadAvailableAt) : max(scratchpadAvailableAt, srcAvailableAt);
 			inst.y = i;
 			p0[prefetch_data_count++] = inst;
 			continue;
@@ -779,7 +809,7 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 		{
 			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 			registerWasChanged |= 1u << dst;
-			inst.x = (src == dst) ? 0 : srcAvailableAt;
+			inst.x = (src == dst) ? (((inst.y & ScratchpadL3Mask) >= 262144) ? scratchpadHighAvailableAt : scratchpadAvailableAt) : max(scratchpadAvailableAt, srcAvailableAt);
 			inst.y = i;
 			p0[prefetch_data_count++] = inst;
 			continue;
@@ -798,7 +828,7 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 		{
 			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 			registerWasChanged |= 1u << dst;
-			inst.x = (src == dst) ? 0 : srcAvailableAt;
+			inst.x = (src == dst) ? (((inst.y & ScratchpadL3Mask) >= 262144) ? scratchpadHighAvailableAt : scratchpadAvailableAt) : max(scratchpadAvailableAt, srcAvailableAt);
 			inst.y = i;
 			p0[prefetch_data_count++] = inst;
 			continue;
@@ -828,7 +858,7 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 		{
 			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 			registerWasChanged |= 1u << dst;
-			inst.x = (src == dst) ? 0 : srcAvailableAt;
+			inst.x = (src == dst) ? (((inst.y & ScratchpadL3Mask) >= 262144) ? scratchpadHighAvailableAt : scratchpadAvailableAt) : max(scratchpadAvailableAt, srcAvailableAt);
 			inst.y = i;
 			p0[prefetch_data_count++] = inst;
 			continue;
@@ -854,6 +884,18 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 			continue;
 		}
 		opcode -= RANDOMX_FREQ_ISWAP_R;
+
+		if (opcode < RANDOMX_FREQ_ISTORE)
+		{
+			scratchpadAvailableAt = i + 1;
+			if ((mod >> 4) >= 14)
+				scratchpadHighAvailableAt = i + 1;
+
+			// Mark ISTORE
+			e[i].x = inst.x | (0x80 << 8);
+			continue;
+		}
+		opcode -= RANDOMX_FREQ_ISTORE;
 	}
 
 	// Sort p0
@@ -917,6 +959,12 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 		const int prev_mem_counter = prefetched_vgprs_data >> 16;
 		if (vgpr_id)
 			prefecth_vgprs_stack[num_prefetch_vgprs_available++] = vgpr_id;
+
+		if (e[i].x & (0x80 << 8))
+		{
+			++mem_counter;
+			s_waitcnt_value = 100;
+		}
 
 		const int vmcnt = mem_counter - prev_mem_counter;
 		p = jit_emit_instruction(p, e[i], -vgpr_id, (vmcnt < s_waitcnt_value) ? vmcnt : -1, lane_index, batch_size);
