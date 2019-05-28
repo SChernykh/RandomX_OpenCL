@@ -35,50 +35,50 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #define CacheLineAlignMask ((1U << 31) - 1) & ~(CacheLineSize - 1)
 #define DatasetExtraItems 524287U
 
-#define ScratchpadL1Mask 16376
-#define ScratchpadL2Mask 262136
+#define ScratchpadL1Mask_reg 38
+#define ScratchpadL2Mask_reg 39
 #define ScratchpadL3Mask 2097144
 
 // 12.5*25 = 312.5 bytes on average
 #define RANDOMX_FREQ_IADD_RS       25
 
-// 58.5*7 = 409.5 bytes on average
+// 47.5*7 = 332.5 bytes on average
 #define RANDOMX_FREQ_IADD_M         7
 
 // 8.5*16 = 136 bytes on average
 #define RANDOMX_FREQ_ISUB_R        16
 
-// 58.5*7 = 409.5 bytes on average
+// 47.5*7 = 332.5 bytes on average
 #define RANDOMX_FREQ_ISUB_M         7
 
 // 25.5*16 = 408 bytes on average
 #define RANDOMX_FREQ_IMUL_R        16
 
-// 74.5*4 = 298 bytes on average
+// 63.5*4 = 254 bytes on average
 #define RANDOMX_FREQ_IMUL_M         4
 
 // 68*4 = 272 bytes
 #define RANDOMX_FREQ_IMULH_R        4
 
-// 118.5*1 = 118.5 bytes on average
+// 107.5*1 = 107.5 bytes on average
 #define RANDOMX_FREQ_IMULH_M        1
 
 // 100*4 = 400 bytes
 #define RANDOMX_FREQ_ISMULH_R       4
 
-// 150.5*1 = 150.5 bytes on average
+// 139.5*1 = 139.5 bytes on average
 #define RANDOMX_FREQ_ISMULH_M       1
 
 // 36*8 = 288 bytes
 #define RANDOMX_FREQ_IMUL_RCP       8
 
-// 12*2 = 24 bytes
+// 8*2 = 16 bytes
 #define RANDOMX_FREQ_INEG_R         2
 
 // 5.5*15 = 82.5 bytes
 #define RANDOMX_FREQ_IXOR_R        15
 
-// 54.5*5 = 272.5 bytes on average
+// 43.5*5 = 217.5 bytes on average
 #define RANDOMX_FREQ_IXOR_M         5
 
 // 19*10 = 190 bytes on average
@@ -87,7 +87,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 10.5*4 = 42 bytes on average
 #define RANDOMX_FREQ_ISWAP_R        4
 
-// Total: 3813.5 + 4(s_setpc_b64) = 3817.5 bytes on average
+// Total: 3530.5 + 4(s_setpc_b64) = 3534.5 bytes on average
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -113,36 +113,25 @@ ulong getFloatMask(const ulong entropy)
 	return (entropy & mask22bit) | getStaticExponent(entropy);
 }
 
-__global uint* jit_scratchpad_calc_address(__global uint* p, uint src, uint imm32, uint mask, uint batch_size)
+__global uint* jit_scratchpad_calc_address(__global uint* p, uint src, uint imm32, uint mask_reg, uint batch_size)
 {
 	// s_add_i32 s14, s(16 + src * 2), imm32
 	*(p++) = 0x810eff10u | (src << 1);
 	*(p++) = imm32;
 
+	// v_and_b32 v28, s14, mask_reg
+	*(p++) = 0x2638000eu | (mask_reg << 9);
+
 #if SCRATCHPAD_STRIDED == 1
-	// s_and_b32 s15, s14, mask & CacheLineAlignMask
-	*(p++) = 0x860fff0eu;
-	*(p++) = mask & CacheLineAlignMask;
+	// v_and_b32 v29, s14, 56
+	*(p++) = 0xd113001du;
+	*(p++) = 0x0001700eu;
 
-	// s_mulk_i32 s15, batch_size
-	*(p++) = 0xb78f0000u | batch_size;
-
-	// s_and_b32 s14, s14, 56
-	*(p++) = 0x860eb80eu;
-
-	// s_add_u32 s14, s14, s15
-	*(p++) = 0x800e0f0eu;
-#else
-	// s_and_b32 s14, s14, mask
-	*(p++) = 0x860eff0eu;
-	*(p++) = mask;
+	// s3 = batch_size
+	// v_mad_u32_u24 v28, v28, s3, v29
+	*(p++) = 0xd1c3001cu;
+	*(p++) = 0x0474071cu;
 #endif
-
-	// s_add_u32 s14, s0, s14
-	*(p++) = 0x800e0e00u;
-
-	// s_addc_u32 s15, s1, 0
-	*(p++) = 0x820f8001u;
 
 	return p;
 }
@@ -153,22 +142,19 @@ __global uint* jit_scratchpad_calc_fixed_address(__global uint* p, uint imm32, u
 	imm32 = mad24(imm32 & ~63u, batch_size, imm32 & 56);
 #endif
 
-	// s_add_u32 s14, s0, imm32
-	*(p++) = 0x800eff00u;
+	// v_mov_b32 v28, imm32
+	*(p++) = 0x7e3802ffu;
 	*(p++) = imm32;
-
-	// s_addc_u32 s15, s1, 0
-	*(p++) = 0x820f8001u;
 
 	return p;
 }
 
 __global uint* jit_scratchpad_load(__global uint* p, uint lane_index, uint vgpr_index)
 {
-	// v41 = 0
-	// global_load_dwordx2 v[vgpr_index:vgpr_index+1], v41, s[14:15]
+	// v28 = offset
+	// global_load_dwordx2 v[vgpr_index:vgpr_index+1], v28, s[0:1]
 	*(p++) = 0xdc548000u;
-	*(p++) = 0x000e0029u | (vgpr_index << 24);
+	*(p++) = 0x0000001cu | (vgpr_index << 24);
 
 	return p;
 }
@@ -259,7 +245,7 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 		if (prefetch_vgpr_index >= 0)
 		{
 			if (src != dst) // p = 7/8
-				p = jit_scratchpad_calc_address(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask : ScratchpadL2Mask, batch_size);
+				p = jit_scratchpad_calc_address(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask_reg : ScratchpadL2Mask_reg, batch_size);
 			else // p = 1/8
 				p = jit_scratchpad_calc_fixed_address(p, inst.y & ScratchpadL3Mask, batch_size);
 
@@ -277,7 +263,7 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 			*(p++) = 0x82110f11u | (dst << 1) | (dst << 17);
 		}
 
-		// 24*7/8 + 12*1/8 + 28 + 8 = 58.5 bytes on average
+		// (12*7/8 + 8*1/8 + 28) + 8 = 47.5 bytes on average
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_IADD_M;
@@ -312,7 +298,7 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 		if (prefetch_vgpr_index >= 0)
 		{
 			if (src != dst) // p = 7/8
-				p = jit_scratchpad_calc_address(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask : ScratchpadL2Mask, batch_size);
+				p = jit_scratchpad_calc_address(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask_reg : ScratchpadL2Mask_reg, batch_size);
 			else // p = 1/8
 				p = jit_scratchpad_calc_fixed_address(p, inst.y & ScratchpadL3Mask, batch_size);
 
@@ -330,7 +316,7 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 			*(p++) = 0x82910f11u | (dst << 1) | (dst << 17);
 		}
 
-		// 24*7/8 + 12*1/8 + 28 + 8 = 58.5 bytes on average
+		// (12*7/8 + 8*1/8 + 28) + 8 = 47.5 bytes on average
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_ISUB_M;
@@ -391,7 +377,7 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 		if (prefetch_vgpr_index >= 0)
 		{
 			if (src != dst) // p = 7/8
-				p = jit_scratchpad_calc_address(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask : ScratchpadL2Mask, batch_size);
+				p = jit_scratchpad_calc_address(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask_reg : ScratchpadL2Mask_reg, batch_size);
 			else // p = 1/8
 				p = jit_scratchpad_calc_fixed_address(p, inst.y & ScratchpadL3Mask, batch_size);
 
@@ -421,7 +407,7 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 			*(p++) = 0x92100e10u | (dst << 1) | (dst << 17);
 		}
 
-		// 24*7/8 + 12*1/8 + 28 + 24 = 74.5 bytes on average
+		// (12*7/8 + 8*1/8 + 28) + 24 = 63.5 bytes on average
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_IMUL_M;
@@ -456,7 +442,7 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 		if (prefetch_vgpr_index >= 0)
 		{
 			if (src != dst) // p = 7/8
-				p = jit_scratchpad_calc_address(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask : ScratchpadL2Mask, batch_size);
+				p = jit_scratchpad_calc_address(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask_reg : ScratchpadL2Mask_reg, batch_size);
 			else // p = 1/8
 				p = jit_scratchpad_calc_fixed_address(p, inst.y & ScratchpadL3Mask, batch_size);
 
@@ -486,7 +472,7 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 			*(p++) = 0x0001012bu | (lane_index << 13);
 		}
 
-		// 24*7/8 + 12*1/8 + 28 + 68 = 118.5 bytes on average
+		// (12*7/8 + 8*1/8 + 28) + 68 = 107.5 bytes on average
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_IMULH_M;
@@ -529,7 +515,7 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 		if (prefetch_vgpr_index >= 0)
 		{
 			if (src != dst) // p = 7/8
-				p = jit_scratchpad_calc_address(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask : ScratchpadL2Mask, batch_size);
+				p = jit_scratchpad_calc_address(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask_reg : ScratchpadL2Mask_reg, batch_size);
 			else // p = 1/8
 				p = jit_scratchpad_calc_fixed_address(p, inst.y & ScratchpadL3Mask, batch_size);
 
@@ -567,7 +553,7 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 			*(p++) = 0x82912321u | (dst << 17);			// s_subb_u32      s(17 + dst * 2), s33, s35
 		}
 
-		// 24*7/8 + 12*1/8 + 28 + 100 = 150.5 bytes on average
+		// (12*7/8 + 8*1/8 + 28) + 100 = 139.5 bytes on average
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_ISMULH_M;
@@ -596,11 +582,10 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 
 	if (opcode < RANDOMX_FREQ_INEG_R)
 	{
-		*(p++) = 0xbe900510u | (dst << 1) | (dst << 17);	// s_not_b64       s[16 + dst * 2:17 + dst * 2], s[16 + dst * 2:17 + dst * 2]
-		*(p++) = 0x80108110u | (dst << 1) | (dst << 17);	// s_add_u32       s(16 + dst * 2), s(16 + dst * 2), 1
-		*(p++) = 0x82118011u | (dst << 1) | (dst << 17);	// s_addc_u32      s(17 + dst * 2), s(17 + dst * 2), 0
+		*(p++) = 0x80901080u | (dst << 9) | (dst << 17);	// s_sub_u32       s(16 + dst * 2), 0, s(16 + dst * 2)
+		*(p++) = 0x82911180u | (dst << 9) | (dst << 17);	// s_subb_u32      s(17 + dst * 2), 0, s(17 + dst * 2)
 
-		// 12 bytes
+		// 8 bytes
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_INEG_R;
@@ -635,7 +620,7 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 		if (prefetch_vgpr_index >= 0)
 		{
 			if (src != dst) // p = 7/8
-				p = jit_scratchpad_calc_address(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask : ScratchpadL2Mask, batch_size);
+				p = jit_scratchpad_calc_address(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask_reg : ScratchpadL2Mask_reg, batch_size);
 			else // p = 1/8
 				p = jit_scratchpad_calc_fixed_address(p, inst.y & ScratchpadL3Mask, batch_size);
 
@@ -650,7 +635,7 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 			*(p++) = 0x88900e10u | (dst << 1) | (dst << 17);
 		}
 
-		// 24*7/8 + 12*1/8 + 28 + 4 = 54.5 bytes on average
+		// (12*7/8 + 8*1/8 + 28) + 4 = 43.5 bytes on average
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_IXOR_M;

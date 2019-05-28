@@ -147,6 +147,18 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		# batch_size
 		s_mov_b32       s3, s16
 
+		# Scratchpad masks for strided scratchpads
+		#v_mov_b32       v38, 16320
+		#v_mov_b32       v39, 262080
+
+		# Scratchpad masks for non-strided scratchpads
+		v_mov_b32       v38, 16376
+		v_mov_b32       v39, 262136
+
+		# load scratchpad base address
+		v_readlane_b32	s0, v2, 0
+		v_readlane_b32	s1, v18, 0
+
 main_loop:
 		# const uint2 spMix = as_uint2(R[readReg0] ^ R[readReg1]);
 		ds_read_b64     v[24:25], v0
@@ -230,10 +242,6 @@ main_loop:
 		v_readlane_b32	s29, v35, 6
 		v_readlane_b32	s30, v34, 7
 		v_readlane_b32	s31, v35, 7
-
-		# load scratchpad base address
-		v_readlane_b32	s0, v2, 0
-		v_readlane_b32	s1, v18, 0
 
 		# call JIT code
 		s_swappc_b64    s[12:13], s[4:5]
