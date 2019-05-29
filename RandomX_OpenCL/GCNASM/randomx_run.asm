@@ -150,12 +150,12 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		# Scratchpad masks for strided scratchpads
 		#v_mov_b32       v38, 16320
 		#v_mov_b32       v39, 262080
-		#v_mov_b32       v48, 2097088
+		#v_mov_b32       v50, 2097088
 
 		# Scratchpad masks for non-strided scratchpads
 		v_mov_b32       v38, 16376
 		v_mov_b32       v39, 262136
-		v_mov_b32       v48, 2097144
+		v_mov_b32       v50, 2097144
 
 		# load scratchpad base address
 		v_readlane_b32	s0, v2, 0

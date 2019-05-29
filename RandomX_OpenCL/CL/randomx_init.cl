@@ -37,7 +37,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 
 #define ScratchpadL1Mask_reg 38
 #define ScratchpadL2Mask_reg 39
-#define ScratchpadL3Mask_reg 48
+#define ScratchpadL3Mask_reg 50
 
 #define ScratchpadL3Mask 2097144
 
@@ -83,7 +83,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 43.5*5 = 217.5 bytes on average
 #define RANDOMX_FREQ_IXOR_M         5
 
-// 19*10 = 190 bytes on average
+// 15.5*10 = 155 bytes on average
 #define RANDOMX_FREQ_IROR_R        10
 
 // 10.5*4 = 42 bytes on average
@@ -92,7 +92,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 28*16 = 448 bytes
 #define RANDOMX_FREQ_ISTORE        16
 
-// Total: 3978.5 + 4(s_setpc_b64) = 3982.5 bytes on average
+// Total: 3943.5 + 4(s_setpc_b64) = 3947.5 bytes on average
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -608,7 +608,7 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 			*(p++) = 0xbea000ffu;
 			*(p++) = inst.y;
 
-			// s_mov_b32 s32, (inst.y < 0) ? -1 : 0
+			// s_mov_b32 s33, (inst.y < 0) ? -1 : 0
 			*(p++) = 0xbea10000u | ((as_int(inst.y) < 0) ? 0xc1 : 0x80);
 
 			// s_xor_b64 s[16 + dst * 2:17 + dst * 2], s[16 + dst * 2:17 + dst * 2], s[32:33]
@@ -652,11 +652,8 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 			// s_lshr_b64 s[32:33], s[16 + dst * 2:17 + dst * 2], s(16 + src * 2)
 			*(p++) = 0x8fa01010u | (dst << 1) | (src << 9);
 
-			// s_mov_b32 s14, 64
-			*(p++) = 0xbe8e00c0u;
-
-			// s_sub_u32  s15, s14, s(16 + src * 2)
-			*(p++) = 0x808f100eu | (src << 9);
+			// s_sub_u32  s15, 64, s(16 + src * 2)
+			*(p++) = 0x808f10c0u | (src << 9);
 
 			// s_lshl_b64 s[34:35], s[16 + dst * 2:17 + dst * 2], s15
 			*(p++) = 0x8ea20f10u | (dst << 1);
@@ -668,14 +665,14 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 			// s_lshr_b64 s[32:33], s[16 + dst * 2:17 + dst * 2], shift
 			*(p++) = 0x8fa08010u | (dst << 1) | (shift << 8);
 
-			// s_lshl_b64 s[34:35], s[16 + dst * 2:17 + dst * 2], 0
+			// s_lshl_b64 s[34:35], s[16 + dst * 2:17 + dst * 2], 64 - shift
 			*(p++) = 0x8ea28010u | (dst << 1) | ((64 - shift) << 8);
 		}
 
 		// s_or_b64 s[16 + dst * 2:17 + dst * 2], s[32:33], s[34:35]
 		*(p++) = 0x87902220u | (dst << 17);
 
-		// 16*7/8 + 8/8 + 4 = 19 bytes on average
+		// 12*7/8 + 8/8 + 4 = 15.5 bytes on average
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_IROR_R;
@@ -699,7 +696,7 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 		const uint mask = ((mod >> 4) < 14) ? ((mod % 4) ? ScratchpadL1Mask_reg : ScratchpadL2Mask_reg) : ScratchpadL3Mask_reg;
 		p = jit_scratchpad_calc_address(p, dst, inst.y, mask, batch_size);
 
-		const uint vgpr_id = 50;
+		const uint vgpr_id = 48;
 		*(p++) = 0x7e000210u | (src << 1) | (vgpr_id << 17);	// v_mov_b32       vgpr_id, s(16 + src * 2)
 		*(p++) = 0x7e020211u | (src << 1) | (vgpr_id << 17);	// v_mov_b32       vgpr_id + 1, s(17 + src * 2)
 
