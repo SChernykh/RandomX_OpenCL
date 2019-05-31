@@ -41,6 +41,9 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 
 #define ScratchpadL3Mask 2097144
 
+#define RANDOMX_JUMP_BITS          8
+#define RANDOMX_JUMP_OFFSET        8
+
 // 12.5*25 = 312.5 bytes on average
 #define RANDOMX_FREQ_IADD_RS       25
 
@@ -89,10 +92,13 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 10.5*4 = 42 bytes on average
 #define RANDOMX_FREQ_ISWAP_R        4
 
+// 24*16 = 384 bytes
+#define RANDOMX_FREQ_CBRANCH       16
+
 // 28*16 = 448 bytes
 #define RANDOMX_FREQ_ISTORE        16
 
-// Total: 3943.5 + 4(s_setpc_b64) = 3947.5 bytes on average
+// Total: 4327.5 + 4(s_setpc_b64) = 4331.5 bytes on average
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -183,7 +189,7 @@ __global uint* jit_scratchpad_load2(__global uint* p, uint lane_index, uint vgpr
 
 ulong imul_rcp_value(uint divisor)
 {
-	const ulong p2exp63 = 1ULL << 63;
+	const ulong p2exp63 = 1UL << 63;
 
 	ulong quotient = p2exp63 / divisor;
 	ulong remainder = p2exp63 % divisor;
@@ -200,7 +206,7 @@ ulong imul_rcp_value(uint divisor)
 	return quotient;
 }
 
-__global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int prefetch_vgpr_index, int vmcnt, uint lane_index, uint batch_size)
+__global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch_target, const uint2 inst, int prefetch_vgpr_index, int vmcnt, uint lane_index, uint batch_size)
 {
 	uint opcode = inst.x & 0xFF;
 	const uint dst = (inst.x >> 8) & 7;
@@ -691,6 +697,34 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 	}
 	opcode -= RANDOMX_FREQ_ISWAP_R;
 
+	if (opcode < RANDOMX_FREQ_CBRANCH)
+	{
+		const int shift = (mod >> 4) + RANDOMX_JUMP_OFFSET;
+		uint imm = inst.y | (1u << shift);
+		imm &= ~(1u << (shift - 1));
+
+		// s_add_u32 s(16 + dst * 2), s(16 + dst * 2), imm32
+		*(p++) = 0x8010ff10 | (dst << 1) | (dst << 17);
+		*(p++) = imm;
+
+		// s_addc_u32 s(17 + dst * 2), s(17 + dst * 2), ((imm < 0) ? -1 : 0)
+		*(p++) = 0x82110011u | (dst << 1) | (dst << 17) | (((as_int(imm) < 0) ? 0xc1 : 0x80) << 8);
+
+		const uint conditionMask = ((1 << RANDOMX_JUMP_BITS) - 1) << shift;
+
+		// s_and_b32 s14, s(16 + dst * 2), conditionMask
+		*(p++) = 0x860eff10u | (dst << 1);
+		*(p++) = conditionMask;
+
+		// s_cbranch_scc0 target
+		const int delta = ((last_branch_target - p) - 1);
+		*(p++) = 0xbf840000u | (delta & 0xFFFF);
+
+		// 24 bytes
+		return p;
+	}
+	opcode -= RANDOMX_FREQ_CBRANCH;
+
 	if (opcode < RANDOMX_FREQ_ISTORE)
 	{
 		const uint mask = ((mod >> 4) < 14) ? ((mod % 4) ? ScratchpadL1Mask_reg : ScratchpadL2Mask_reg) : ScratchpadL3Mask_reg;
@@ -713,186 +747,297 @@ __global uint* jit_emit_instruction(__global uint* p, const uint2 inst, int pref
 	return p;
 }
 
+int jit_prefetch_read(
+	__global uint2* p0,
+	const int prefetch_data_count,
+	const uint i,
+	const uint src,
+	const uint dst,
+	const uint2 inst,
+	const uint srcAvailableAt,
+	const uint dstAvailableAt,
+	const uint scratchpadAvailableAt,
+	const uint scratchpadHighAvailableAt,
+	const int lastBranchTarget,
+	const int lastBranch)
+{
+	uint2 t;
+	t.x = (src == dst) ? (((inst.y & ScratchpadL3Mask) >= 262144) ? scratchpadHighAvailableAt : scratchpadAvailableAt) : max(scratchpadAvailableAt, srcAvailableAt);
+	t.y = i;
+
+	const int t1 = t.x;
+
+	if ((lastBranchTarget <= t1) && (t1 <= lastBranch))
+	{
+		// Don't move prefetch inside previous branch scope
+		t.x = lastBranch + 1;
+	}
+	else if ((lastBranchTarget > lastBranch) && (t1 < lastBranchTarget))
+	{
+		// Don't move prefetch outside current branch scope
+		t.x = lastBranchTarget;
+	}
+
+	p0[prefetch_data_count] = t;
+	return prefetch_data_count + 1;
+}
+
 __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global uint* p, uint lane_index, uint batch_size)
 {
-	ulong registerLastChanged = 0;
-	uint registerWasChanged = 0;
+	int prefetch_data_count;
 
-	uint scratchpadAvailableAt = 0;
-	uint scratchpadHighAvailableAt = 0;
-
-	int prefetch_data_count = 0;
 	#pragma unroll(1)
-	for (uint i = 0; i < RANDOMX_PROGRAM_SIZE; ++i)
+	for (int pass = 0; pass < 2; ++pass)
 	{
-		// Clean flags
-		e[i].x &= ~(0xf8u << 8);
+		ulong registerLastChanged = 0;
+		uint registerWasChanged = 0;
 
-		uint2 inst = e[i];
-		uint opcode = inst.x & 0xFF;
-		const uint dst = (inst.x >> 8) & 7;
-		const uint src = (inst.x >> 16) & 7;
-		const uint mod = inst.x >> 24;
+		uint scratchpadAvailableAt = 0;
+		uint scratchpadHighAvailableAt = 0;
 
-		const uint srcAvailableAt = (registerWasChanged & (1u << src)) ? (((registerLastChanged >> (src * 8)) & 0xFF) + 1) : 0;
-		const uint dstAvailableAt = (registerWasChanged & (1u << dst)) ? (((registerLastChanged >> (dst * 8)) & 0xFF) + 1) : 0;
+		int lastBranchTarget = -1;
+		int lastBranch = -1;
 
-		if (opcode < RANDOMX_FREQ_IADD_RS)
+		ulong registerLastChangedAtBranchTarget = 0;
+		uint registerWasChangedAtBranchTarget = 0;
+		uint scratchpadAvailableAtBranchTarget = 0;
+		uint scratchpadHighAvailableAtBranchTarget = 0;
+
+		prefetch_data_count = 0;
+
+		#pragma unroll(1)
+		for (uint i = 0; i < RANDOMX_PROGRAM_SIZE; ++i)
 		{
-			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
-			registerWasChanged |= 1u << dst;
-			continue;
-		}
-		opcode -= RANDOMX_FREQ_IADD_RS;
+			// Clean flags
+			if (pass == 0)
+				e[i].x &= ~(0xf8u << 8);
 
-		if (opcode < RANDOMX_FREQ_IADD_M)
-		{
-			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
-			registerWasChanged |= 1u << dst;
-			inst.x = (src == dst) ? (((inst.y & ScratchpadL3Mask) >= 262144) ? scratchpadHighAvailableAt : scratchpadAvailableAt) : max(scratchpadAvailableAt, srcAvailableAt);
-			inst.y = i;
-			p0[prefetch_data_count++] = inst;
-			continue;
-		}
-		opcode -= RANDOMX_FREQ_IADD_M;
+			uint2 inst = e[i];
+			uint opcode = inst.x & 0xFF;
+			const uint dst = (inst.x >> 8) & 7;
+			const uint src = (inst.x >> 16) & 7;
+			const uint mod = inst.x >> 24;
 
-		if (opcode < RANDOMX_FREQ_ISUB_R)
-		{
-			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
-			registerWasChanged |= 1u << dst;
-			continue;
-		}
-		opcode -= RANDOMX_FREQ_ISUB_R;
+			if (pass == 1)
+			{
+				// Branch target
+				if (inst.x & (0x20 << 8))
+				{
+ 					lastBranchTarget = i;
+					registerLastChangedAtBranchTarget = registerLastChanged;
+					registerWasChangedAtBranchTarget = registerWasChanged;
+					scratchpadAvailableAtBranchTarget = scratchpadAvailableAt;
+					scratchpadHighAvailableAtBranchTarget = scratchpadHighAvailableAt;
+				}
 
-		if (opcode < RANDOMX_FREQ_ISUB_M)
-		{
-			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
-			registerWasChanged |= 1u << dst;
-			inst.x = (src == dst) ? (((inst.y & ScratchpadL3Mask) >= 262144) ? scratchpadHighAvailableAt : scratchpadAvailableAt) : max(scratchpadAvailableAt, srcAvailableAt);
-			inst.y = i;
-			p0[prefetch_data_count++] = inst;
-			continue;
-		}
-		opcode -= RANDOMX_FREQ_ISUB_M;
+				// Branch
+				if (inst.x & (0x40 << 8))
+					lastBranch = i;
+			}
 
-		if (opcode < RANDOMX_FREQ_IMUL_R)
-		{
-			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
-			registerWasChanged |= 1u << dst;
-			continue;
-		}
-		opcode -= RANDOMX_FREQ_IMUL_R;
+			const uint srcAvailableAt = (registerWasChanged & (1u << src)) ? (((registerLastChanged >> (src * 8)) & 0xFF) + 1) : 0;
+			const uint dstAvailableAt = (registerWasChanged & (1u << dst)) ? (((registerLastChanged >> (dst * 8)) & 0xFF) + 1) : 0;
 
-		if (opcode < RANDOMX_FREQ_IMUL_M)
-		{
-			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
-			registerWasChanged |= 1u << dst;
-			inst.x = (src == dst) ? (((inst.y & ScratchpadL3Mask) >= 262144) ? scratchpadHighAvailableAt : scratchpadAvailableAt) : max(scratchpadAvailableAt, srcAvailableAt);
-			inst.y = i;
-			p0[prefetch_data_count++] = inst;
-			continue;
-		}
-		opcode -= RANDOMX_FREQ_IMUL_M;
-
-		if (opcode < RANDOMX_FREQ_IMULH_R)
-		{
-			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
-			registerWasChanged |= 1u << dst;
-			continue;
-		}
-		opcode -= RANDOMX_FREQ_IMULH_R;
-
-		if (opcode < RANDOMX_FREQ_IMULH_M)
-		{
-			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
-			registerWasChanged |= 1u << dst;
-			inst.x = (src == dst) ? (((inst.y & ScratchpadL3Mask) >= 262144) ? scratchpadHighAvailableAt : scratchpadAvailableAt) : max(scratchpadAvailableAt, srcAvailableAt);
-			inst.y = i;
-			p0[prefetch_data_count++] = inst;
-			continue;
-		}
-		opcode -= RANDOMX_FREQ_IMULH_M;
-
-		if (opcode < RANDOMX_FREQ_ISMULH_R)
-		{
-			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
-			registerWasChanged |= 1u << dst;
-			continue;
-		}
-		opcode -= RANDOMX_FREQ_ISMULH_R;
-
-		if (opcode < RANDOMX_FREQ_ISMULH_M)
-		{
-			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
-			registerWasChanged |= 1u << dst;
-			inst.x = (src == dst) ? (((inst.y & ScratchpadL3Mask) >= 262144) ? scratchpadHighAvailableAt : scratchpadAvailableAt) : max(scratchpadAvailableAt, srcAvailableAt);
-			inst.y = i;
-			p0[prefetch_data_count++] = inst;
-			continue;
-		}
-		opcode -= RANDOMX_FREQ_ISMULH_M;
-
-		if (opcode < RANDOMX_FREQ_IMUL_RCP)
-		{
-			if (inst.y & (inst.y - 1))
+			if (opcode < RANDOMX_FREQ_IADD_RS)
 			{
 				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 				registerWasChanged |= 1u << dst;
+				continue;
 			}
-			continue;
-		}
-		opcode -= RANDOMX_FREQ_IMUL_RCP;
+			opcode -= RANDOMX_FREQ_IADD_RS;
 
-		if (opcode < RANDOMX_FREQ_INEG_R + RANDOMX_FREQ_IXOR_R)
-		{
-			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
-			registerWasChanged |= 1u << dst;
-			continue;
-		}
-		opcode -= RANDOMX_FREQ_INEG_R + RANDOMX_FREQ_IXOR_R;
-
-		if (opcode < RANDOMX_FREQ_IXOR_M)
-		{
-			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
-			registerWasChanged |= 1u << dst;
-			inst.x = (src == dst) ? (((inst.y & ScratchpadL3Mask) >= 262144) ? scratchpadHighAvailableAt : scratchpadAvailableAt) : max(scratchpadAvailableAt, srcAvailableAt);
-			inst.y = i;
-			p0[prefetch_data_count++] = inst;
-			continue;
-		}
-		opcode -= RANDOMX_FREQ_IXOR_M;
-
-		if (opcode < RANDOMX_FREQ_IROR_R)
-		{
-			registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
-			registerWasChanged |= 1u << dst;
-			continue;
-		}
-		opcode -= RANDOMX_FREQ_IROR_R;
-
-		if (opcode < RANDOMX_FREQ_ISWAP_R)
-		{
-			if (src != dst)
+			if (opcode < RANDOMX_FREQ_IADD_M)
 			{
 				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
-				registerLastChanged = (registerLastChanged & ~(0xFFul << (src * 8))) | ((ulong)(i) << (src * 8));
-				registerWasChanged |= (1u << dst) | (1u << src);
+				registerWasChanged |= 1u << dst;
+				if (pass == 1)
+					prefetch_data_count = jit_prefetch_read(p0, prefetch_data_count, i, src, dst, inst, srcAvailableAt, dstAvailableAt, scratchpadAvailableAt, scratchpadHighAvailableAt, lastBranchTarget, lastBranch);
+				continue;
 			}
-			continue;
-		}
-		opcode -= RANDOMX_FREQ_ISWAP_R;
+			opcode -= RANDOMX_FREQ_IADD_M;
 
-		if (opcode < RANDOMX_FREQ_ISTORE)
-		{
-			scratchpadAvailableAt = i + 1;
-			if ((mod >> 4) >= 14)
-				scratchpadHighAvailableAt = i + 1;
+			if (opcode < RANDOMX_FREQ_ISUB_R)
+			{
+				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+				registerWasChanged |= 1u << dst;
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_ISUB_R;
 
-			// Mark ISTORE
-			e[i].x = inst.x | (0x80 << 8);
-			continue;
+			if (opcode < RANDOMX_FREQ_ISUB_M)
+			{
+				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+				registerWasChanged |= 1u << dst;
+				if (pass == 1)
+					prefetch_data_count = jit_prefetch_read(p0, prefetch_data_count, i, src, dst, inst, srcAvailableAt, dstAvailableAt, scratchpadAvailableAt, scratchpadHighAvailableAt, lastBranchTarget, lastBranch);
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_ISUB_M;
+
+			if (opcode < RANDOMX_FREQ_IMUL_R)
+			{
+				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+				registerWasChanged |= 1u << dst;
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_IMUL_R;
+
+			if (opcode < RANDOMX_FREQ_IMUL_M)
+			{
+				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+				registerWasChanged |= 1u << dst;
+				if (pass == 1)
+					prefetch_data_count = jit_prefetch_read(p0, prefetch_data_count, i, src, dst, inst, srcAvailableAt, dstAvailableAt, scratchpadAvailableAt, scratchpadHighAvailableAt, lastBranchTarget, lastBranch);
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_IMUL_M;
+
+			if (opcode < RANDOMX_FREQ_IMULH_R)
+			{
+				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+				registerWasChanged |= 1u << dst;
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_IMULH_R;
+
+			if (opcode < RANDOMX_FREQ_IMULH_M)
+			{
+				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+				registerWasChanged |= 1u << dst;
+				if (pass == 1)
+					prefetch_data_count = jit_prefetch_read(p0, prefetch_data_count, i, src, dst, inst, srcAvailableAt, dstAvailableAt, scratchpadAvailableAt, scratchpadHighAvailableAt, lastBranchTarget, lastBranch);
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_IMULH_M;
+
+			if (opcode < RANDOMX_FREQ_ISMULH_R)
+			{
+				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+				registerWasChanged |= 1u << dst;
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_ISMULH_R;
+
+			if (opcode < RANDOMX_FREQ_ISMULH_M)
+			{
+				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+				registerWasChanged |= 1u << dst;
+				if (pass == 1)
+					prefetch_data_count = jit_prefetch_read(p0, prefetch_data_count, i, src, dst, inst, srcAvailableAt, dstAvailableAt, scratchpadAvailableAt, scratchpadHighAvailableAt, lastBranchTarget, lastBranch);
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_ISMULH_M;
+
+			if (opcode < RANDOMX_FREQ_IMUL_RCP)
+			{
+				if (inst.y & (inst.y - 1))
+				{
+					registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+					registerWasChanged |= 1u << dst;
+				}
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_IMUL_RCP;
+
+			if (opcode < RANDOMX_FREQ_INEG_R + RANDOMX_FREQ_IXOR_R)
+			{
+				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+				registerWasChanged |= 1u << dst;
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_INEG_R + RANDOMX_FREQ_IXOR_R;
+
+			if (opcode < RANDOMX_FREQ_IXOR_M)
+			{
+				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+				registerWasChanged |= 1u << dst;
+				if (pass == 1)
+					prefetch_data_count = jit_prefetch_read(p0, prefetch_data_count, i, src, dst, inst, srcAvailableAt, dstAvailableAt, scratchpadAvailableAt, scratchpadHighAvailableAt, lastBranchTarget, lastBranch);
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_IXOR_M;
+
+			if (opcode < RANDOMX_FREQ_IROR_R)
+			{
+				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+				registerWasChanged |= 1u << dst;
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_IROR_R;
+
+			if (opcode < RANDOMX_FREQ_ISWAP_R)
+			{
+				if (src != dst)
+				{
+					registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+					registerLastChanged = (registerLastChanged & ~(0xFFul << (src * 8))) | ((ulong)(i) << (src * 8));
+					registerWasChanged |= (1u << dst) | (1u << src);
+				}
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_ISWAP_R;
+
+			if (opcode < RANDOMX_FREQ_CBRANCH)
+			{
+				if (pass == 0)
+				{
+					// Mark branch target
+					e[dstAvailableAt].x |= (0x20 << 8);
+
+					// Mark branch
+					e[i].x |= (0x40 << 8);
+
+					// Set all registers as changed at this instruction as per RandomX specification
+					uint t = i | (i << 8);
+					t = t | (t << 16);
+					registerLastChanged = t;
+					registerLastChanged = registerLastChanged | (registerLastChanged << 32);
+					registerWasChanged = 0xFF;
+				}
+				else
+				{
+					// Update only registers which really changed inside this branch
+					registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
+					registerWasChanged |= 1u << dst;
+
+					for (int reg = 0; reg < 8; ++reg)
+					{
+						const uint availableAtBranchTarget = (registerWasChangedAtBranchTarget & (1u << reg)) ? (((registerLastChangedAtBranchTarget >> (reg * 8)) & 0xFF) + 1) : 0;
+						const uint availableAt = (registerWasChanged & (1u << reg)) ? (((registerLastChanged >> (reg * 8)) & 0xFF) + 1) : 0;
+						if (availableAt != availableAtBranchTarget)
+						{
+							registerLastChanged = (registerLastChanged & ~(0xFFul << (reg * 8))) | ((ulong)(i) << (reg * 8));
+							registerWasChanged |= 1u << reg;
+						}
+					}
+
+					if (scratchpadAvailableAtBranchTarget != scratchpadAvailableAt)
+						scratchpadAvailableAt = i + 1;
+
+					if (scratchpadHighAvailableAtBranchTarget != scratchpadHighAvailableAt)
+						scratchpadHighAvailableAt = i + 1;
+				}
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_CBRANCH;
+
+			if (opcode < RANDOMX_FREQ_ISTORE)
+			{
+				if (pass == 0)
+				{
+					// Mark ISTORE
+					e[i].x = inst.x | (0x80 << 8);
+				}
+				else
+				{
+					scratchpadAvailableAt = i + 1;
+					if ((mod >> 4) >= 14)
+						scratchpadHighAvailableAt = i + 1;
+				}
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_ISTORE;
 		}
-		opcode -= RANDOMX_FREQ_ISTORE;
 	}
 
 	// Sort p0
@@ -935,16 +1080,23 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 	int s_waitcnt_value = 100;
 	int num_prefetch_vgprs_available = num_prefetch_vgprs;
 
+	__global uint* last_branch_target = p;
+
 	#pragma unroll(1)
 	for (int i = 0; i < RANDOMX_PROGRAM_SIZE; ++i)
 	{
+		const uint2 inst = e[i];
+
+		if (inst.x & (0x20 << 8))
+			last_branch_target = p;
+
 		while ((prefetch_data.x == i) && (num_prefetch_vgprs_available > 0))
 		{
 			++mem_counter;
 			const int vgpr_id = prefecth_vgprs_stack[--num_prefetch_vgprs_available];
 			prefetched_vgprs[prefetch_data.y] = vgpr_id | (mem_counter << 16);
 
-			p = jit_emit_instruction(p, e[prefetch_data.y], vgpr_id, mem_counter, lane_index, batch_size);
+			p = jit_emit_instruction(p, 0, e[prefetch_data.y], vgpr_id, mem_counter, lane_index, batch_size);
 			s_waitcnt_value = 100;
 
 			++k;
@@ -957,14 +1109,14 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 		if (vgpr_id)
 			prefecth_vgprs_stack[num_prefetch_vgprs_available++] = vgpr_id;
 
-		if (e[i].x & (0x80 << 8))
+		if (inst.x & (0x80 << 8))
 		{
 			++mem_counter;
 			s_waitcnt_value = 100;
 		}
 
 		const int vmcnt = mem_counter - prev_mem_counter;
-		p = jit_emit_instruction(p, e[i], -vgpr_id, (vmcnt < s_waitcnt_value) ? vmcnt : -1, lane_index, batch_size);
+		p = jit_emit_instruction(p, last_branch_target, inst, -vgpr_id, (vmcnt < s_waitcnt_value) ? vmcnt : -1, lane_index, batch_size);
 		if (vmcnt < s_waitcnt_value)
 			s_waitcnt_value = vmcnt;
 	}
