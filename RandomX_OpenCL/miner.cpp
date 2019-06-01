@@ -223,8 +223,15 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 
 	for (size_t nonce = start_nonce, k = 0; nonce < 0xFFFFFFFFUL; nonce += intensity, ++k)
 	{
-		auto validation_thread = [&nonce_counter, myDataset, &hashes_check, intensity, nonce, large_pages_available]() {
-			randomx_vm *myMachine = randomx_create_vm((randomx_flags)(RANDOMX_FLAG_FULL_MEM | RANDOMX_FLAG_JIT | RANDOMX_FLAG_HARD_AES | (large_pages_available ? RANDOMX_FLAG_LARGE_PAGES : 0)), nullptr, myDataset);
+		auto validation_thread = [&nonce_counter, myDataset, &hashes_check, intensity, nonce, &large_pages_available]() {
+			const randomx_flags flags = (randomx_flags)(RANDOMX_FLAG_FULL_MEM | RANDOMX_FLAG_JIT | RANDOMX_FLAG_HARD_AES);
+			randomx_vm *myMachine = randomx_create_vm((randomx_flags)(flags | (large_pages_available ? RANDOMX_FLAG_LARGE_PAGES : 0)), nullptr, myDataset);
+
+			if (!myMachine && large_pages_available)
+			{
+				large_pages_available = false;
+				myMachine = randomx_create_vm(flags, nullptr, myDataset);
+			}
 
 			uint8_t buf[sizeof(blockTemplate)];
 			memcpy(buf, blockTemplate, sizeof(buf));
