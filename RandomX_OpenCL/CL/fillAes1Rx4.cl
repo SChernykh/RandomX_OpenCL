@@ -18,7 +18,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 */
 
 __attribute__((reqd_work_group_size(64, 1, 1)))
-__kernel void fillAes1Rx4_name(__global void* state, __global void* out, uint batch_size)
+__kernel void fillAes_name(__global void* state, __global void* out, uint batch_size)
 {
 	__local uint T[2048];
 
@@ -35,7 +35,9 @@ __kernel void fillAes1Rx4_name(__global void* state, __global void* out, uint ba
 
 	barrier(CLK_LOCAL_MEM_FENCE);
 
+#if num_rounds != 4
 	const uint k[4] = { AES_KEY_FILL[sub * 4], AES_KEY_FILL[sub * 4 + 1], AES_KEY_FILL[sub * 4 + 2], AES_KEY_FILL[sub * 4 + 3] };
+#endif
 
 	__global uint* s = ((__global uint*) state) + idx * (64 / sizeof(uint)) + sub * (16 / sizeof(uint));
 	uint x[4] = { s[0], s[1], s[2], s[3] };
@@ -55,6 +57,7 @@ __kernel void fillAes1Rx4_name(__global void* state, __global void* out, uint ba
 	{
 		uint y[4];
 
+#if num_rounds != 4
 		y[0] = t0[get_byte(x[0], 0)] ^ t1[get_byte(x[1], s1)] ^ t2[get_byte(x[2], 16)] ^ t3[get_byte(x[3], s3)] ^ k[0];
 		y[1] = t0[get_byte(x[1], 0)] ^ t1[get_byte(x[2], s1)] ^ t2[get_byte(x[3], 16)] ^ t3[get_byte(x[0], s3)] ^ k[1];
 		y[2] = t0[get_byte(x[2], 0)] ^ t1[get_byte(x[3], s1)] ^ t2[get_byte(x[0], 16)] ^ t3[get_byte(x[1], s3)] ^ k[2];
@@ -66,6 +69,29 @@ __kernel void fillAes1Rx4_name(__global void* state, __global void* out, uint ba
 		x[1] = y[1];
 		x[2] = y[2];
 		x[3] = y[3];
+#else
+		y[0] = t0[get_byte(x[0], 0)] ^ t1[get_byte(x[1], s1)] ^ t2[get_byte(x[2], 16)] ^ t3[get_byte(x[3], s3)] ^ 0xf890465du;
+		y[1] = t0[get_byte(x[1], 0)] ^ t1[get_byte(x[2], s1)] ^ t2[get_byte(x[3], 16)] ^ t3[get_byte(x[0], s3)] ^ 0x7ffbe4a6u;
+		y[2] = t0[get_byte(x[2], 0)] ^ t1[get_byte(x[3], s1)] ^ t2[get_byte(x[0], 16)] ^ t3[get_byte(x[1], s3)] ^ 0x141f82b7u;
+		y[3] = t0[get_byte(x[3], 0)] ^ t1[get_byte(x[0], s1)] ^ t2[get_byte(x[1], 16)] ^ t3[get_byte(x[2], s3)] ^ 0xcf359e95u;
+
+		x[0] = t0[get_byte(y[0], 0)] ^ t1[get_byte(y[1], s1)] ^ t2[get_byte(y[2], 16)] ^ t3[get_byte(y[3], s3)] ^ 0x6a55c450u;
+		x[1] = t0[get_byte(y[1], 0)] ^ t1[get_byte(y[2], s1)] ^ t2[get_byte(y[3], 16)] ^ t3[get_byte(y[0], s3)] ^ 0xfee8278au;
+		x[2] = t0[get_byte(y[2], 0)] ^ t1[get_byte(y[3], s1)] ^ t2[get_byte(y[0], 16)] ^ t3[get_byte(y[1], s3)] ^ 0xbd5c5ac3u;
+		x[3] = t0[get_byte(y[3], 0)] ^ t1[get_byte(y[0], s1)] ^ t2[get_byte(y[1], 16)] ^ t3[get_byte(y[2], s3)] ^ 0x6741ffdcu;
+
+		y[0] = t0[get_byte(x[0], 0)] ^ t1[get_byte(x[1], s1)] ^ t2[get_byte(x[2], 16)] ^ t3[get_byte(x[3], s3)] ^ 0x114c47a4u;
+		y[1] = t0[get_byte(x[1], 0)] ^ t1[get_byte(x[2], s1)] ^ t2[get_byte(x[3], 16)] ^ t3[get_byte(x[0], s3)] ^ 0xd524fde4u;
+		y[2] = t0[get_byte(x[2], 0)] ^ t1[get_byte(x[3], s1)] ^ t2[get_byte(x[0], 16)] ^ t3[get_byte(x[1], s3)] ^ 0xa7279ad2u;
+		y[3] = t0[get_byte(x[3], 0)] ^ t1[get_byte(x[0], s1)] ^ t2[get_byte(x[1], 16)] ^ t3[get_byte(x[2], s3)] ^ 0x3d324aacu;
+
+		x[0] = t0[get_byte(y[0], 0)] ^ t1[get_byte(y[1], s1)] ^ t2[get_byte(y[2], 16)] ^ t3[get_byte(y[3], s3)] ^ 0x810c3a2au;
+		x[1] = t0[get_byte(y[1], 0)] ^ t1[get_byte(y[2], s1)] ^ t2[get_byte(y[3], 16)] ^ t3[get_byte(y[0], s3)] ^ 0x99a9aeffu;
+		x[2] = t0[get_byte(y[2], 0)] ^ t1[get_byte(y[3], s1)] ^ t2[get_byte(y[0], 16)] ^ t3[get_byte(y[1], s3)] ^ 0x42d3dbd9u;
+		x[3] = t0[get_byte(y[3], 0)] ^ t1[get_byte(y[0], s1)] ^ t2[get_byte(y[1], 16)] ^ t3[get_byte(y[2], s3)] ^ 0x76f6db08u;
+
+		*p = *(uint4*)(x);
+#endif
 	}
 
 	*(__global uint4*)(s) = *(uint4*)(x);

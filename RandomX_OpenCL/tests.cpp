@@ -57,7 +57,7 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 		},
 		{
 			CL_FILLAES1RX4_SCRATCHPAD,
-			CL_FILLAES1RX4_ENTROPY,
+			CL_FILLAES4RX4_ENTROPY,
 			CL_HASHAES1RX4,
 			CL_BLAKE2B_INITIAL_HASH,
 			CL_BLAKE2B_HASH_REGISTERS_32,
@@ -167,7 +167,7 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 
 	std::cout << "fillAes1Rx4_scratchpad test passed" << std::endl;
 
-	kernel = ctx.kernels[CL_FILLAES1RX4_ENTROPY];
+	kernel = ctx.kernels[CL_FILLAES4RX4_ENTROPY];
 	if (!clSetKernelArgs(kernel, hash_gpu, entropy_gpu, static_cast<uint32_t>(intensity)))
 	{
 		return false;
@@ -185,13 +185,7 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 
 	for (size_t i = 0; i < intensity; ++i)
 	{
-		fillAes1Rx4<false>(hashes2.data() + i * INITIAL_HASH_SIZE, ENTROPY_SIZE, entropy.data() + ENTROPY_SIZE * intensity);
-
-		if (memcmp(hashes.data() + i * INITIAL_HASH_SIZE, hashes2.data() + i * INITIAL_HASH_SIZE, INITIAL_HASH_SIZE) != 0)
-		{
-			std::cerr << "fillAes1Rx4_entropy test (hash) failed!" << std::endl;
-			return false;
-		}
+		fillAes4Rx4<false>(hashes2.data() + i * INITIAL_HASH_SIZE, ENTROPY_SIZE, entropy.data() + ENTROPY_SIZE * intensity);
 
 		if (memcmp(entropy.data() + i * ENTROPY_SIZE, entropy.data() + ENTROPY_SIZE * intensity, ENTROPY_SIZE) != 0)
 		{

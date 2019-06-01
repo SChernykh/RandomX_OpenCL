@@ -48,7 +48,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 		},
 		{
 			CL_FILLAES1RX4_SCRATCHPAD,
-			CL_FILLAES1RX4_ENTROPY,
+			CL_FILLAES4RX4_ENTROPY,
 			CL_HASHAES1RX4,
 			CL_BLAKE2B_INITIAL_HASH,
 			CL_BLAKE2B_HASH_REGISTERS_32,
@@ -179,7 +179,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 		return false;
 	}
 
-	cl_kernel kernel_fillaes1rx4_entropy = ctx.kernels[CL_FILLAES1RX4_ENTROPY];
+	cl_kernel kernel_fillaes1rx4_entropy = ctx.kernels[CL_FILLAES4RX4_ENTROPY];
 	if (!clSetKernelArgs(kernel_fillaes1rx4_entropy, hashes_gpu, entropy_gpu, static_cast<uint32_t>(intensity)))
 	{
 		return false;

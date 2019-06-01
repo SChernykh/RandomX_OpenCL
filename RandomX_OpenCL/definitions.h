@@ -24,7 +24,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 
 static const std::string AES_CL = "CL/aes.cl";
 static const std::string CL_FILLAES1RX4_SCRATCHPAD = "fillAes1Rx4_scratchpad";
-static const std::string CL_FILLAES1RX4_ENTROPY = "fillAes1Rx4_entropy";
+static const std::string CL_FILLAES4RX4_ENTROPY = "fillAes4Rx4_entropy";
 static const std::string CL_HASHAES1RX4 = "hashAes1Rx4";
 
 static const std::string BLAKE2B_CL = "CL/blake2b.cl";
