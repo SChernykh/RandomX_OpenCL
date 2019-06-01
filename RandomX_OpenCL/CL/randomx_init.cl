@@ -1077,7 +1077,7 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 	int k = 0;
 	uint2 prefetch_data = p0[0];
 	int mem_counter = 0;
-	int s_waitcnt_value = 100;
+	int s_waitcnt_value = 63;
 	int num_prefetch_vgprs_available = num_prefetch_vgprs;
 
 	__global uint* last_branch_target = p;
@@ -1097,7 +1097,7 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 			prefetched_vgprs[prefetch_data.y] = vgpr_id | (mem_counter << 16);
 
 			p = jit_emit_instruction(p, 0, e[prefetch_data.y], vgpr_id, mem_counter, lane_index, batch_size);
-			s_waitcnt_value = 100;
+			s_waitcnt_value = 63;
 
 			++k;
 			prefetch_data = p0[k];
@@ -1112,7 +1112,7 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 		if (inst.x & (0x80 << 8))
 		{
 			++mem_counter;
-			s_waitcnt_value = 100;
+			s_waitcnt_value = 63;
 		}
 
 		const int vmcnt = mem_counter - prev_mem_counter;
