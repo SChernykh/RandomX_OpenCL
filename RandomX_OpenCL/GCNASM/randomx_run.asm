@@ -56,7 +56,10 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		.arg programs, "uint*", uint*, global, 
 		.arg batch_size, "uint", uint
 	.text
+		s_dcache_wb
+		s_waitcnt       vmcnt(0) & lgkmcnt(0)
 		s_icache_inv
+
 		v_lshl_add_u32  v1, s8, 6, v0
 		s_load_dwordx2  s[0:1], s[4:5], 0x0
 		s_load_dwordx2  s[2:3], s[4:5], 0x40
