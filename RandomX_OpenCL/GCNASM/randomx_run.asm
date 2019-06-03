@@ -79,11 +79,9 @@ begin:
 		v_add_co_u32    v6, vcc, v3, v5
 		v_addc_co_u32   v7, vcc, v4, 0, vcc
 		global_load_dwordx4 v[6:9], v[6:7], off
-		v_lshrrev_b32   v0, 6, v0
-		v_lshlrev_b32   v0, 8, v0
-		v_add_u32       v10, v0, v5
+		v_mov_b32       v0, 0
 		s_waitcnt       vmcnt(0)
-		ds_write2_b64   v10, v[6:7], v[8:9] offset1:1
+		ds_write2_b64   v5, v[6:7], v[8:9] offset1:1
 		s_waitcnt       lgkmcnt(0)
 		s_mov_b64       s[0:1], exec
 		v_cmpx_le_u32   s[2:3], v1, 7
@@ -99,6 +97,9 @@ begin:
 		# v41, v44 = 0
 		v_mov_b32       v41, 0
 		v_mov_b32       v44, 0
+
+		# v51 = 4
+		v_mov_b32       v51, 4
 
 		ds_read_b32     v6, v0 offset:152
 		v_cmp_lt_u32    s[2:3], v1, 4
@@ -169,6 +170,23 @@ begin:
 		# save current executiom mask
 		s_mov_b64       s[36:37], exec
 
+		# v41 = 0 on lane 0, set it to 8 on lane 1
+		s_mov_b64       exec, 2
+		v_mov_b32       v41, 8
+
+		# v51 = 4 on lane 0, set it to 0 on lane 1
+		# It will be used in FSWAP_R instruction
+		v_mov_b32       v51, 0
+
+		# load group A registers
+		# Read low 8 bytes into lane 0 and high 8 bytes into lane 1
+		s_mov_b64       exec, 3
+		ds_read2_b64    v[52:55], v41 offset0:24 offset1:26
+		ds_read2_b64    v[56:59], v41 offset0:28 offset1:30
+
+		# Restore execution mask
+		s_mov_b64       exec, s[36:37]
+
 main_loop:
 		# const uint2 spMix = as_uint2(R[readReg0] ^ R[readReg1]);
 		ds_read_b64     v[24:25], v0
@@ -233,9 +251,17 @@ main_loop:
 		s_waitcnt       lgkmcnt(0)
 
 		# Program 0
-		s_mov_b64 exec, 1
+
+		# load group F,E registers
+		# Read low 8 bytes into lane 0 and high 8 bytes into lane 1
+		s_mov_b64       exec, 3
+		ds_read2_b64    v[60:63], v41 offset0:8 offset1:10
+		ds_read2_b64    v[64:67], v41 offset0:12 offset1:14
+		ds_read2_b64    v[68:71], v41 offset0:16 offset1:18
+		ds_read2_b64    v[72:75], v41 offset0:20 offset1:22
 
 		# load VM integer registers
+		s_mov_b64 exec, 1
 		v_readlane_b32	s16, v34, 0
 		v_readlane_b32	s17, v35, 0
 		v_readlane_b32	s18, v34, 1
@@ -252,6 +278,8 @@ main_loop:
 		v_readlane_b32	s29, v35, 6
 		v_readlane_b32	s30, v34, 7
 		v_readlane_b32	s31, v35, 7
+
+		s_waitcnt       lgkmcnt(0)
 
 		# call JIT code
 		s_swappc_b64    s[12:13], s[4:5]
@@ -273,6 +301,14 @@ main_loop:
 		v_writelane_b32 v29, s29, 6
 		v_writelane_b32 v28, s30, 7
 		v_writelane_b32 v29, s31, 7
+
+		# Write out group F,E registers
+		# Write low 8 bytes from lane 0 and high 8 bytes from lane 1
+		s_mov_b64       exec, 3
+		ds_write2_b64   v41, v[60:61], v[62:63] offset0:8 offset1:10
+		ds_write2_b64   v41, v[64:65], v[66:67] offset0:12 offset1:14
+		ds_write2_b64   v41, v[68:69], v[70:71] offset0:16 offset1:18
+		ds_write2_b64   v41, v[72:73], v[74:75] offset0:20 offset1:22
 
 		# Restore execution mask
 		s_mov_b64       exec, s[36:37]

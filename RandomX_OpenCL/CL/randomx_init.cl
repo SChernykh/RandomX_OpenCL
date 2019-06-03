@@ -92,13 +92,16 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 10.5*4 = 42 bytes on average
 #define RANDOMX_FREQ_ISWAP_R        4
 
+// 28*8 = 224 bytes
+#define RANDOMX_FREQ_FSWAP_R        8
+
 // 24*16 = 384 bytes
 #define RANDOMX_FREQ_CBRANCH       16
 
 // 28*16 = 448 bytes
 #define RANDOMX_FREQ_ISTORE        16
 
-// Total: 4327.5 + 4(s_setpc_b64) = 4331.5 bytes on average
+// Total: 4551.5 + 4(s_setpc_b64) = 4555.5 bytes on average
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -697,6 +700,30 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 	}
 	opcode -= RANDOMX_FREQ_ISWAP_R;
 
+	if (opcode < RANDOMX_FREQ_FSWAP_R)
+	{
+		// s_mov_b64 exec, 3
+		*(p++) = 0xbefe0183u;
+
+		// ds_permute_b32 v(60 + dst * 2), v51, v(60 + dst * 2)
+		*(p++) = 0xd87c0000u;
+		*(p++) = 0x3c003c33u + (dst << 9) + (dst << 25);
+
+		// ds_permute_b32 v(61 + dst * 2), v51, v(61 + dst * 2)
+		*(p++) = 0xd87c0000u;
+		*(p++) = 0x3d003d33u + (dst << 9) + (dst << 25);
+
+		// s_waitcnt lgkmcnt(0)
+		*(p++) = 0xbf8cc07fu;
+
+		// s_mov_b64 exec, 1
+		*(p++) = 0xbefe0181u;
+
+		// 28 bytes
+		return p;
+	}
+	opcode -= RANDOMX_FREQ_FSWAP_R;
+
 	if (opcode < RANDOMX_FREQ_CBRANCH)
 	{
 		const int shift = (mod >> 4) + RANDOMX_JUMP_OFFSET;
@@ -977,6 +1004,12 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 			}
 			opcode -= RANDOMX_FREQ_ISWAP_R;
 
+			if (opcode < RANDOMX_FREQ_FSWAP_R)
+			{
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_FSWAP_R;
+
 			if (opcode < RANDOMX_FREQ_CBRANCH)
 			{
 				if (pass == 0)
@@ -1063,7 +1096,9 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 
 	__global int* prefecth_vgprs_stack = (__global int*)(p0 + prefetch_data_count + 1);
 
-	enum { num_prefetch_vgprs = 16 };
+	// v84 - v127 will be used for global memory loads
+	enum { num_prefetch_vgprs = 22 };
+
 	#pragma unroll
 	for (int i = 0; i < num_prefetch_vgprs; ++i)
 		prefecth_vgprs_stack[i] = NUM_VGPR_REGISTERS - 2 - i * 2;
