@@ -95,13 +95,16 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 28*8 = 224 bytes
 #define RANDOMX_FREQ_FSWAP_R        8
 
+// 16*20 = 320 bytes
+#define RANDOMX_FREQ_FADD_R        20
+
 // 24*16 = 384 bytes
 #define RANDOMX_FREQ_CBRANCH       16
 
 // 28*16 = 448 bytes
 #define RANDOMX_FREQ_ISTORE        16
 
-// Total: 4551.5 + 4(s_setpc_b64) = 4555.5 bytes on average
+// Total: 4871.5 + 4(s_setpc_b64) = 4875.5 bytes on average
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -724,6 +727,23 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 	}
 	opcode -= RANDOMX_FREQ_FSWAP_R;
 
+	if (opcode < RANDOMX_FREQ_FADD_R)
+	{
+		// s_mov_b64 exec, 3
+		*(p++) = 0xbefe0183u;
+
+		// v_add_f64 v[60 + dst * 2:61 + dst * 2], v[60 + dst * 2:61 + dst * 2], v[52 + src * 2:53 + src * 2]
+		*(p++) = 0xd280003cu + ((dst & 3) << 1);
+		*(p++) = 0x0002693cu + ((dst & 3) << 1) + ((src & 3) << 10);
+
+		// s_mov_b64 exec, 1
+		*(p++) = 0xbefe0181u;
+
+		// 16 bytes
+		return p;
+	}
+	opcode -= RANDOMX_FREQ_FADD_R;
+
 	if (opcode < RANDOMX_FREQ_CBRANCH)
 	{
 		const int shift = (mod >> 4) + RANDOMX_JUMP_OFFSET;
@@ -1004,11 +1024,11 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 			}
 			opcode -= RANDOMX_FREQ_ISWAP_R;
 
-			if (opcode < RANDOMX_FREQ_FSWAP_R)
+			if (opcode < RANDOMX_FREQ_FSWAP_R + RANDOMX_FREQ_FADD_R)
 			{
 				continue;
 			}
-			opcode -= RANDOMX_FREQ_FSWAP_R;
+			opcode -= RANDOMX_FREQ_FSWAP_R + RANDOMX_FREQ_FADD_R;
 
 			if (opcode < RANDOMX_FREQ_CBRANCH)
 			{
