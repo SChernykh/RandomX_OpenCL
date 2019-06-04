@@ -98,9 +98,6 @@ begin:
 		v_mov_b32       v41, 0
 		v_mov_b32       v44, 0
 
-		# v51 = 4
-		v_mov_b32       v51, 4
-
 		ds_read_b32     v6, v0 offset:152
 		v_cmp_lt_u32    s[2:3], v1, 4
 		ds_read2_b64    v[34:37], v0 offset0:18 offset1:16
@@ -173,10 +170,6 @@ begin:
 		# v41 = 0 on lane 0, set it to 8 on lane 1
 		s_mov_b64       exec, 2
 		v_mov_b32       v41, 8
-
-		# v51 = 4 on lane 0, set it to 0 on lane 1
-		# It will be used in FSWAP_R instruction
-		v_mov_b32       v51, 0
 
 		# load group A registers
 		# Read low 8 bytes into lane 0 and high 8 bytes into lane 1

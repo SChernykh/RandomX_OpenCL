@@ -705,19 +705,19 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		// s_mov_b64 exec, 3
 		*(p++) = 0xbefe0183u;
 
-		// ds_permute_b32 v(60 + dst * 2), v51, v(60 + dst * 2)
-		*(p++) = 0xd87c0000u;
-		*(p++) = 0x3c003c33u + (dst << 9) + (dst << 25);
+		// ds_swizzle_b32 v(60 + dst * 2), v(60 + dst * 2) offset:0x8001
+		*(p++) = 0xd87a8001u;
+		*(p++) = 0x3c00003cu + (dst << 1) + (dst << 25);
 
-		// ds_permute_b32 v(61 + dst * 2), v51, v(61 + dst * 2)
-		*(p++) = 0xd87c0000u;
-		*(p++) = 0x3d003d33u + (dst << 9) + (dst << 25);
-
-		// s_waitcnt lgkmcnt(0)
-		*(p++) = 0xbf8cc07fu;
+		// ds_swizzle_b32 v(61 + dst * 2), v(61 + dst * 2) offset:0x8001
+		*(p++) = 0xd87a8001u;
+		*(p++) = 0x3d00003du + (dst << 1) + (dst << 25);
 
 		// s_mov_b64 exec, 1
 		*(p++) = 0xbefe0181u;
+
+		// s_waitcnt lgkmcnt(0)
+		*(p++) = 0xbf8cc07fu;
 
 		// 28 bytes
 		return p;
