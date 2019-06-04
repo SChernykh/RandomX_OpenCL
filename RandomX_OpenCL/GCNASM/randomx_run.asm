@@ -52,7 +52,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		.arg dataset, "uchar*", uchar*, global, const, rdonly
 		.arg scratchpad, "uchar*", uchar*, global, 
 		.arg registers, "ulong*", ulong*, global, 
-		.arg rounding_modes, "uint*", uint*, global, , rdonly
+		.arg rounding_modes, "uint*", uint*, global,
 		.arg programs, "uint*", uint*, global, 
 		.arg batch_size, "uint", uint
 	.text
@@ -61,11 +61,27 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		s_icache_inv
 		s_branch begin
 
+		# pgmrsrc2 = 0x00000090, bits 1:5 = 8, so first 8 SGPRs (s0-s7) contain user data
+		# s8 contains group id
+		# v0 contains local id
 begin:
+
 		v_lshl_add_u32  v1, s8, 6, v0
 		s_load_dwordx2  s[0:1], s[4:5], 0x0
 		s_load_dwordx2  s[2:3], s[4:5], 0x40
+		s_load_dwordx2  s[64:65], s[4:5], 0x48
 		s_waitcnt       lgkmcnt(0)
+
+		# load rounding mode
+		s_lshl_b32      s16, s8, 2
+		s_add_u32       s64, s64, s16
+		s_addc_u32      s65, s65, 0
+		v_mov_b32       v8, 0
+		global_load_dword v8, v8, s[64:65]
+		s_waitcnt       vmcnt(0)
+		v_readlane_b32  s16, v8, 0
+		s_setreg_b32    hwreg(mode, 2, 2), s16
+
 		v_add_u32       v1, s0, v1
 		v_lshrrev_b32   v2, 6, v1
 		v_lshlrev_b32   v3, 5, v2
@@ -341,5 +357,12 @@ main_loop_end:
 		global_store_dwordx2 v[0:1], v[21:22], off
 		global_store_dwordx2 v[0:1], v[30:31], off inst_offset:64
 		global_store_dwordx2 v[0:1], v[32:33], off inst_offset:128
+
+		# store rounding mode
+		s_getreg_b32    s0, hwreg(mode, 2, 2)
+		v_mov_b32       v0, 0
+		v_mov_b32       v1, s0
+		global_store_dword v0, v1, s[64:65]
+
 program_end:
 		s_endpgm

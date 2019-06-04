@@ -101,10 +101,13 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 24*16 = 384 bytes
 #define RANDOMX_FREQ_CBRANCH       16
 
+// 20*1 = 20 bytes
+#define RANDOMX_FREQ_CFROUND        1
+
 // 28*16 = 448 bytes
 #define RANDOMX_FREQ_ISTORE        16
 
-// Total: 4871.5 + 4(s_setpc_b64) = 4875.5 bytes on average
+// Total: 4891.5 + 4(s_setpc_b64) = 4895.5 bytes on average
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -772,6 +775,37 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 	}
 	opcode -= RANDOMX_FREQ_CBRANCH;
 
+	if (opcode < RANDOMX_FREQ_CFROUND)
+	{
+		const uint shift = inst.y & 63;
+		if (shift == 63)
+		{
+			*(p++) = 0x8e0e8110u | (src << 1);		// s_lshl_b32      s14, s(16 + src * 2), 1
+			*(p++) = 0x8f0f9f11u | (src << 1);		// s_lshr_b32      s15, s(17 + src * 2), 31
+			*(p++) = 0x870e0f0eu;					// s_or_b32        s14, s14, s15
+			*(p++) = 0x860e830eu;					// s_and_b32       s14, s14, 3
+		}
+		else
+		{
+			// s_bfe_u64 s[14:15], s[16:17], (shift,width=2)
+			*(p++) = 0x938eff10u | (src << 1);
+			*(p++) = shift | (2 << 16);
+		}
+
+		// s_brev_b32 s14, s14
+		*(p++) = 0xbe8e080eu;
+
+		// s_lshr_b32 s14, s14, 30
+		*(p++) = 0x8f0e9e0eu;
+
+		// s_setreg_b32 hwreg(mode, 2, 2), s14
+		*(p++) = 0xb90e0881u;
+
+		// 20 bytes
+		return p;
+	}
+	opcode -= RANDOMX_FREQ_CFROUND;
+
 	if (opcode < RANDOMX_FREQ_ISTORE)
 	{
 		const uint mask = ((mod >> 4) < 14) ? ((mod % 4) ? ScratchpadL1Mask_reg : ScratchpadL2Mask_reg) : ScratchpadL3Mask_reg;
@@ -1073,6 +1107,12 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 				continue;
 			}
 			opcode -= RANDOMX_FREQ_CBRANCH;
+
+			if (opcode < RANDOMX_FREQ_CFROUND)
+			{
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_CFROUND;
 
 			if (opcode < RANDOMX_FREQ_ISTORE)
 			{
