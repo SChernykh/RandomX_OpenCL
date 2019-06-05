@@ -175,6 +175,9 @@ begin:
 		v_mov_b32       v39, 262136
 		v_mov_b32       v50, 2097144
 
+		# mask for FSCAL_R
+		v_mov_b32       v51, 0x80F00000
+
 		# load scratchpad base address
 		v_readlane_b32	s0, v2, 0
 		v_readlane_b32	s1, v18, 0
