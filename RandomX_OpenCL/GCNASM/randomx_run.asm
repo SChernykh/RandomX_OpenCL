@@ -65,7 +65,6 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		# s8 contains group id
 		# v0 contains local id
 begin:
-
 		v_lshl_add_u32  v1, s8, 6, v0
 		s_load_dwordx2  s[0:1], s[4:5], 0x0
 		s_load_dwordx2  s[2:3], s[4:5], 0x40
@@ -184,8 +183,10 @@ begin:
 		s_mov_b64       s[36:37], exec
 
 		# v41 = 0 on lane 0, set it to 8 on lane 1
+		# v44 = 0 on lane 0, set it to 4 on lane 1
 		s_mov_b64       exec, 2
 		v_mov_b32       v41, 8
+		v_mov_b32       v44, 4
 
 		# load group A registers
 		# Read low 8 bytes into lane 0 and high 8 bytes into lane 1
