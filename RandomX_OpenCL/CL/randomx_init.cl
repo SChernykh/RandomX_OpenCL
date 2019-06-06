@@ -116,6 +116,9 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 160*4 = 640 bytes
 #define RANDOMX_FREQ_FDIV_M         4
 
+// 104*6 = 624 bytes
+#define RANDOMX_FREQ_FSQRT_R        6
+
 // 24*16 = 384 bytes
 #define RANDOMX_FREQ_CBRANCH       16
 
@@ -125,7 +128,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 28*16 = 448 bytes
 #define RANDOMX_FREQ_ISTORE        16
 
-// Total: 6803.5 + 4(s_setpc_b64) = 6807.5 bytes on average
+// Total: 7427.5 + 4(s_setpc_b64) = 7431.5 bytes on average
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -986,6 +989,49 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 	}
 	opcode -= RANDOMX_FREQ_FDIV_M;
 
+	if (opcode < RANDOMX_FREQ_FSQRT_R)
+	{
+		const uint d = dst & 3;
+
+		*(p++) = 0xbefe0183u;							// s_mov_b64 exec, 3
+		*(p++) = 0xb9430881u;							// s_setreg_b32    hwreg(mode, 2, 2), s67 (round to nearest even)
+		*(p++) = 0x7e384d44u + (d << 1);				// v_rsq_f64       v[28:29], v[68 + dst * 2:69 + dst * 2]
+		*(p++) = 0xd281002au;							// v_mul_f64       v[42:43], v[28:29], v[68 + dst * 2:69 + dst * 2]
+		*(p++) = 0x0002891cu + (d << 10);
+		*(p++) = 0xd2810030u;							// v_mul_f64       v[48:49], v[28:29], 0.5
+		*(p++) = 0x0001e11cu;
+		*(p++) = 0x7e5c0330u;							// v_mov_b32       v46, v48
+		*(p++) = 0x2a5ea531u;							// v_xor_b32       v47, v49, v82
+		*(p++) = 0xd1cc002eu;							// v_fma_f64       v[46:47], v[46:47], v[42:43], 0.5
+		*(p++) = 0x03c2552eu;
+		*(p++) = 0xd1cc002au;							// v_fma_f64       v[42:43], v[42:43], v[46:47], v[42:43]
+		*(p++) = 0x04aa5d2au;
+		*(p++) = 0xd1cc0030u;							// v_fma_f64       v[48:49], v[48:49], v[46:47], v[48:49]
+		*(p++) = 0x04c25d30u;
+		*(p++) = 0xd1cc002eu;							// v_fma_f64       v[46:47], -v[42:43], v[42:43], v[68 + dst * 2:69 + dst * 2]
+		*(p++) = 0x2512552au + (d << 19);
+		*(p++) = 0xb9420881u;							// s_setreg_b32    hwreg(mode, 2, 2), s66 (current rounding mode)
+		*(p++) = 0xd1cc002au;							// v_fma_f64       v[42:43], v[46:47], v[48:49], v[42:43]
+		*(p++) = 0x04aa612eu;
+
+		// Fix the case "x = +inf"
+		*(p++) = 0xd013000eu;							// v_cmpx_class_f64 s[14:15], v[68 + dst * 2:69 + dst * 2], s[68:69]
+		*(p++) = 0x00008944u + (d << 1);
+
+		// s_xor_b64 exec, exec, 3
+		*(p++) = 0x88fe837eu;
+
+		*(p++) = 0x7e88032au + (d << 18);			// v_mov_b32       v(68 + dst * 2), v42
+		*(p++) = 0x7e8a032bu + (d << 18);			// v_mov_b32       v(69 + dst * 2), v43
+
+		// s_mov_b64 exec, 1
+		*(p++) = 0xbefe0181u;
+
+		// 104 bytes
+		return p;
+	}
+	opcode -= RANDOMX_FREQ_FSQRT_R;
+
 	if (opcode < RANDOMX_FREQ_CBRANCH)
 	{
 		const int shift = (mod >> 4) + RANDOMX_JUMP_OFFSET;
@@ -1337,6 +1383,12 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 				continue;
 			}
 			opcode -= RANDOMX_FREQ_FDIV_M;
+
+			if (opcode < RANDOMX_FREQ_FSQRT_R)
+			{
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_FSQRT_R;
 
 			if (opcode < RANDOMX_FREQ_CBRANCH)
 			{

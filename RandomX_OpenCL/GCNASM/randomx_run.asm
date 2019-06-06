@@ -82,6 +82,10 @@ begin:
 		s_setreg_b32    hwreg(mode, 2, 2), s66
 		s_mov_b32       s67, 0
 
+		# used in FSQRT_R to check for infinity (v_cmpx_class_f64)
+		s_mov_b32       s68, 512
+		s_mov_b32       s69, 0
+
 		v_add_u32       v1, s0, v1
 		v_lshrrev_b32   v2, 6, v1
 		v_lshlrev_b32   v3, 5, v2
@@ -208,6 +212,9 @@ begin:
 
 		# Restore execution mask
 		s_mov_b64       exec, s[36:37]
+
+		# sign mask (used in FSQRT_R)
+		v_mov_b32       v82, 0x80000000
 
 main_loop:
 		# const uint2 spMix = as_uint2(R[readReg0] ^ R[readReg1]);
