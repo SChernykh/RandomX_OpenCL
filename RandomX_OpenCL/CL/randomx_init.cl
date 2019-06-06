@@ -113,7 +113,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 16*20 = 320 bytes
 #define RANDOMX_FREQ_FMUL_R        20
 
-// 176*4 = 704 bytes
+// 160*4 = 640 bytes
 #define RANDOMX_FREQ_FDIV_M         4
 
 // 24*16 = 384 bytes
@@ -125,7 +125,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 28*16 = 448 bytes
 #define RANDOMX_FREQ_ISTORE        16
 
-// Total: 6867.5 + 4(s_setpc_b64) = 6871.5 bytes on average
+// Total: 6803.5 + 4(s_setpc_b64) = 6807.5 bytes on average
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -945,10 +945,13 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			*(p++) = 0xd1e16a2eu;						// v_div_scale_f64 v[46:47], vcc, v[68 + dst * 2:69 + dst * 2], v[28:29], v[68 + dst * 2:69 + dst * 2]
 			*(p++) = 0x05123944u + (d << 1) + (d << 19);
 			*(p++) = 0x7e604b2au;						// v_rcp_f64       v[48:49], v[42:43]
-			*(p++) = 0xd1cc0050u;						// v_fma_f64       v[80:81], -v[42:43], v[48:49], 1.0
-			*(p++) = 0x23ca612au;
-			*(p++) = 0xd1cc0030u;						// v_fma_f64       v[48:49], v[48:49], v[80:81], v[48:49]
-			*(p++) = 0x04c2a130u;
+
+			// Improve initial approximation (can be skipped)
+			//*(p++) = 0xd1cc0050u;						// v_fma_f64       v[80:81], -v[42:43], v[48:49], 1.0
+			//*(p++) = 0x23ca612au;
+			//*(p++) = 0xd1cc0030u;						// v_fma_f64       v[48:49], v[48:49], v[80:81], v[48:49]
+			//*(p++) = 0x04c2a130u;
+
 			*(p++) = 0xd1cc0050u;						// v_fma_f64       v[80:81], -v[42:43], v[48:49], 1.0
 			*(p++) = 0x23ca612au;
 			*(p++) = 0xd1cc0030u;						// v_fma_f64       v[48:49], v[48:49], v[80:81], v[48:49]
@@ -978,7 +981,7 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			*(p++) = 0xbefe0181u;
 		}
 
-		// 44 + 132 = 176 bytes
+		// 44 + 132 = 160 bytes
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_FDIV_M;
