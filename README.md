@@ -10,6 +10,12 @@ Model|CryptonightR H/S|RandomX H/S|Relative speed
 -----|---------------|-----------|--------------
 AMD Vega 64 (1700/1100 MHz)|2200|950|43.2%
 
+## Building on Windows
+
+- Install Visual Studio 2017 Community and [CLRadeonExtender](https://github.com/CLRX/CLRX-mirror/releases)
+- Add CLRadeonExtender's bin directory to PATH environment variable
+- Open .sln file in Visual Studio and build it
+
 ## Donations
 
 If you'd like to support further development/optimization of RandomX miners (both CPU and AMD/NVIDIA), you're welcome to send any amount of XMR to the following address:
