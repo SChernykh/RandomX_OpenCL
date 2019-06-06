@@ -78,8 +78,9 @@ begin:
 		v_mov_b32       v8, 0
 		global_load_dword v8, v8, s[64:65]
 		s_waitcnt       vmcnt(0)
-		v_readlane_b32  s16, v8, 0
-		s_setreg_b32    hwreg(mode, 2, 2), s16
+		v_readlane_b32  s66, v8, 0
+		s_setreg_b32    hwreg(mode, 2, 2), s66
+		s_mov_b32       s67, 0
 
 		v_add_u32       v1, s0, v1
 		v_lshrrev_b32   v2, 6, v1
@@ -160,7 +161,9 @@ begin:
 		v_lshl_add_u32  v0, v11, 3, v0
 		v_mov_b32       v10, v36
 		v_mov_b32       v23, v37
-		s_movk_i32      s2, 0x7ff
+
+		# loop counter
+		s_movk_i32      s2, 2048 - 1
 
 		# batch_size
 		s_mov_b32       s3, s16
@@ -196,6 +199,12 @@ begin:
 		s_mov_b64       exec, 3
 		ds_read2_b64    v[52:55], v41 offset0:24 offset1:26
 		ds_read2_b64    v[56:59], v41 offset0:28 offset1:30
+
+		# xmantissaMask
+		v_mov_b32       v77, (1 << 24) - 1
+
+		# xexponentMask
+		ds_read_b64     v[78:79], v41 offset:160
 
 		# Restore execution mask
 		s_mov_b64       exec, s[36:37]
@@ -363,9 +372,8 @@ main_loop_end:
 		global_store_dwordx2 v[0:1], v[32:33], off inst_offset:128
 
 		# store rounding mode
-		s_getreg_b32    s0, hwreg(mode, 2, 2)
 		v_mov_b32       v0, 0
-		v_mov_b32       v1, s0
+		v_mov_b32       v1, s66
 		global_store_dword v0, v1, s[64:65]
 
 program_end:

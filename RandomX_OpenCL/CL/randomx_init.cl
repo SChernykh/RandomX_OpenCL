@@ -113,6 +113,9 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 16*20 = 320 bytes
 #define RANDOMX_FREQ_FMUL_R        20
 
+// 176*4 = 704 bytes
+#define RANDOMX_FREQ_FDIV_M         4
+
 // 24*16 = 384 bytes
 #define RANDOMX_FREQ_CBRANCH       16
 
@@ -122,7 +125,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 28*16 = 448 bytes
 #define RANDOMX_FREQ_ISTORE        16
 
-// Total: 6163.5 + 4(s_setpc_b64) = 6167.5 bytes on average
+// Total: 6867.5 + 4(s_setpc_b64) = 6871.5 bytes on average
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -919,6 +922,67 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 	}
 	opcode -= RANDOMX_FREQ_FMUL_R;
 
+	if (opcode < RANDOMX_FREQ_FDIV_M)
+	{
+		if (prefetch_vgpr_index >= 0)
+		{
+			p = jit_scratchpad_calc_address_fp(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask_reg : ScratchpadL2Mask_reg, batch_size);
+			p = jit_scratchpad_load_fp(p, lane_index, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
+		}
+
+		if (prefetch_vgpr_index <= 0)
+		{
+			p = jit_scratchpad_load2_fp(p, lane_index, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
+
+			const uint d = dst & 3;
+
+			*(p++) = 0x28389d1cu;						// v_or_b32        v28, v28, v78
+			*(p++) = 0xd201001du;						// v_and_or_b32    v29, v29, v77, v79
+			*(p++) = 0x053e9b1du;
+			*(p++) = 0xb9430881u;						// s_setreg_b32    hwreg(mode, 2, 2), s67 (round to nearest even)
+			*(p++) = 0xd1e10e2au;						// v_div_scale_f64 v[42:43], s[14:15], v[28:29], v[28:29], v[68 + dst * 2:69 + dst * 2]
+			*(p++) = 0x0512391cu + (d << 19);
+			*(p++) = 0xd1e16a2eu;						// v_div_scale_f64 v[46:47], vcc, v[68 + dst * 2:69 + dst * 2], v[28:29], v[68 + dst * 2:69 + dst * 2]
+			*(p++) = 0x05123944u + (d << 1) + (d << 19);
+			*(p++) = 0x7e604b2au;						// v_rcp_f64       v[48:49], v[42:43]
+			*(p++) = 0xd1cc0050u;						// v_fma_f64       v[80:81], -v[42:43], v[48:49], 1.0
+			*(p++) = 0x23ca612au;
+			*(p++) = 0xd1cc0030u;						// v_fma_f64       v[48:49], v[48:49], v[80:81], v[48:49]
+			*(p++) = 0x04c2a130u;
+			*(p++) = 0xd1cc0050u;						// v_fma_f64       v[80:81], -v[42:43], v[48:49], 1.0
+			*(p++) = 0x23ca612au;
+			*(p++) = 0xd1cc0030u;						// v_fma_f64       v[48:49], v[48:49], v[80:81], v[48:49]
+			*(p++) = 0x04c2a130u;
+			*(p++) = 0xd2810050u;						// v_mul_f64       v[80:81], v[46:47], v[48:49]
+			*(p++) = 0x0002612eu;
+			*(p++) = 0xd1cc002au;						// v_fma_f64       v[42:43], -v[42:43], v[80:81], v[46:47]
+			*(p++) = 0x24baa12au;
+			*(p++) = 0xb9420881u;						// s_setreg_b32    hwreg(mode, 2, 2), s66 (current rounding mode)
+			*(p++) = 0xd1e3002au;						// v_div_fmas_f64  v[42:43], v[42:43], v[48:49], v[80:81]
+			*(p++) = 0x0542612au;
+			*(p++) = 0xd1df0050u;						// v_div_fixup_f64 v[80:81], v[42:43], v[28:29], v[68 + dst * 2:69 + dst * 2]
+			*(p++) = 0x0512392au + (d << 19);
+			
+			// Fix the case "x/x = 1.0"
+			*(p++) = 0xd072000eu;						// v_cmpx_eq_f64   s[14:15], v[68 + dst * 2:69 + dst * 2], v[28:29]
+			*(p++) = 0x00023944u + (d << 1);
+			*(p++) = 0x7ea020f2u;						// v_cvt_f64_f32   v[80:81], 1.0
+
+			// s_mov_b64 exec, 3
+			*(p++) = 0xbefe0183u;
+
+			*(p++) = 0x7e880350u + (d << 18);			// v_mov_b32       v(68 + dst * 2), v80
+			*(p++) = 0x7e8a0351u + (d << 18);			// v_mov_b32       v(69 + dst * 2), v81
+
+			// s_mov_b64 exec, 1
+			*(p++) = 0xbefe0181u;
+		}
+
+		// 44 + 132 = 176 bytes
+		return p;
+	}
+	opcode -= RANDOMX_FREQ_FDIV_M;
+
 	if (opcode < RANDOMX_FREQ_CBRANCH)
 	{
 		const int shift = (mod >> 4) + RANDOMX_JUMP_OFFSET;
@@ -967,11 +1031,11 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		// s_brev_b32 s14, s14
 		*(p++) = 0xbe8e080eu;
 
-		// s_lshr_b32 s14, s14, 30
-		*(p++) = 0x8f0e9e0eu;
+		// s_lshr_b32 s66, s14, 30
+		*(p++) = 0x8f429e0eu;
 
-		// s_setreg_b32 hwreg(mode, 2, 2), s14
-		*(p++) = 0xb90e0881u;
+		// s_setreg_b32 hwreg(mode, 2, 2), s66
+		*(p++) = 0xb9420881u;
 
 		// 20 bytes
 		return p;
@@ -1262,6 +1326,14 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 				continue;
 			}
 			opcode -= RANDOMX_FREQ_FSCAL_R + RANDOMX_FREQ_FMUL_R;
+
+			if (opcode < RANDOMX_FREQ_FDIV_M)
+			{
+				if (pass == 1)
+					prefetch_data_count = jit_prefetch_read(p0, prefetch_data_count, i, src, 0xFF, inst, srcAvailableAt, scratchpadAvailableAt, scratchpadHighAvailableAt, lastBranchTarget, lastBranch);
+				continue;
+			}
+			opcode -= RANDOMX_FREQ_FDIV_M;
 
 			if (opcode < RANDOMX_FREQ_CBRANCH)
 			{
