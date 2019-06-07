@@ -129,6 +129,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #define RANDOMX_FREQ_ISTORE        16
 
 // Total: 7427.5 + 4(s_setpc_b64) = 7431.5 bytes on average
+// Real average program size: 7401 bytes
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -1503,6 +1504,9 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 
 	__global uint* last_branch_target = p;
 
+	const uint size_limit = (COMPILED_PROGRAM_SIZE - 200) / sizeof(uint);
+	__global uint* start_p = p;
+
 	#pragma unroll(1)
 	for (int i = 0; i < RANDOMX_PROGRAM_SIZE; ++i)
 	{
@@ -1518,6 +1522,14 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 			prefetched_vgprs[prefetch_data.y] = vgpr_id | (mem_counter << 16);
 
 			p = jit_emit_instruction(p, 0, e[prefetch_data.y], vgpr_id, mem_counter, lane_index, batch_size);
+			if (p - start_p > size_limit)
+			{
+				// Code size limit exceeded!!!
+				// Jump back to randomx_run kernel
+				*(p++) = 0xbe801d0cu; // s_setpc_b64 s[12:13]
+				return p;
+			}
+
 			s_waitcnt_value = 63;
 
 			++k;
@@ -1538,6 +1550,14 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 
 		const int vmcnt = mem_counter - prev_mem_counter;
 		p = jit_emit_instruction(p, last_branch_target, inst, -vgpr_id, (vmcnt < s_waitcnt_value) ? vmcnt : -1, lane_index, batch_size);
+		if (p - start_p > size_limit)
+		{
+			// Code size limit exceeded!!!
+			// Jump back to randomx_run kernel
+			*(p++) = 0xbe801d0cu; // s_setpc_b64 s[12:13]
+			return p;
+		}
+
 		if (vmcnt < s_waitcnt_value)
 			s_waitcnt_value = vmcnt;
 	}

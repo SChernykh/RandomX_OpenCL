@@ -130,7 +130,12 @@ begin:
 		v_mov_b32       v13, 0
 		v_mov_b32       v14, 0
 		s_mov_b64       exec, s[6:7]
-		s_lshl_b64      s[6:7], s[8:9], 14
+
+		# compiled program size
+		s_mov_b32       s6, s8
+		s_mov_b32       s7, s9
+		s_mulk_i32      s6, 10016
+
 		v_add3_u32      v5, v0, v5, 64
 		s_mov_b64       s[8:9], exec
 		s_andn2_b64     exec, s[8:9], s[2:3]
