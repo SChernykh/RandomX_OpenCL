@@ -8,7 +8,7 @@ GPUs tested so far:
 
 Model|CryptonightR H/S|RandomX H/S|Relative speed
 -----|---------------|-----------|--------------
-AMD Vega 64 (1700/1100 MHz)|2200|1053|47.9%
+AMD Vega 64 (1700/1100 MHz)|2200|1075|48.9%
 
 ## Building on Windows
 

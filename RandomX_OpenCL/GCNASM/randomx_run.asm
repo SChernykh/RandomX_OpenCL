@@ -247,6 +247,10 @@ cur_addr:
 		s_add_u32       s56, s14, ismulh_r_sub - cur_addr
 		s_addc_u32      s57, s15, 0
 
+		# get address for IMULH_R subroutine
+		s_add_u32       s58, s14, imulh_r_sub - cur_addr
+		s_addc_u32      s59, s15, 0
+
 main_loop:
 		# const uint2 spMix = as_uint2(R[readReg0] ^ R[readReg1]);
 		ds_read_b64     v[24:25], v0
@@ -609,4 +613,18 @@ ismulh_r_sub:
 		s_cselect_b64   s[34:35], s[14:15], 0
 		s_sub_u32       s14, s32, s34
 		s_subb_u32      s15, s33, s35
+		s_setpc_b64     s[60:61]
+
+imulh_r_sub:
+		v_mov_b32       v45, s38
+		v_mul_hi_u32    v40, s14, v45
+		v_mov_b32       v47, s39
+		v_mad_u64_u32   v[42:43], s[32:33], s14, v47, v[40:41]
+		v_mov_b32       v40, v42
+		v_mad_u64_u32   v[45:46], s[32:33], s15, v45, v[40:41]
+		v_mad_u64_u32   v[42:43], s[32:33], s15, v47, v[43:44]
+		v_add_co_u32    v42, vcc, v42, v46
+		v_addc_co_u32   v43, vcc, 0, v43, vcc
+		v_readlane_b32  s14, v42, 0
+		v_readlane_b32  s15, v43, 0
 		s_setpc_b64     s[60:61]
