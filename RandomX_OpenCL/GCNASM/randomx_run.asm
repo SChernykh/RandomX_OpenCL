@@ -220,9 +220,10 @@ begin:
 		# sign mask (used in FSQRT_R)
 		v_mov_b32       v82, 0x80000000
 
-		# get addresses of FSQRT_R subroutines
 		s_getpc_b64 s[14:15]
 cur_addr:
+
+		# get addresses of FSQRT_R subroutines
 		s_add_u32       s40, s14, fsqrt_r_sub0 - cur_addr
 		s_addc_u32      s41, s15, 0
 		s_add_u32       s42, s14, fsqrt_r_sub1 - cur_addr
@@ -231,6 +232,16 @@ cur_addr:
 		s_addc_u32      s45, s15, 0
 		s_add_u32       s46, s14, fsqrt_r_sub3 - cur_addr
 		s_addc_u32      s47, s15, 0
+
+		# get addresses of FDIV_M subroutines
+		s_add_u32       s48, s14, fdiv_m_sub0 - cur_addr
+		s_addc_u32      s49, s15, 0
+		s_add_u32       s50, s14, fdiv_m_sub1 - cur_addr
+		s_addc_u32      s51, s15, 0
+		s_add_u32       s52, s14, fdiv_m_sub2 - cur_addr
+		s_addc_u32      s53, s15, 0
+		s_add_u32       s54, s14, fdiv_m_sub3 - cur_addr
+		s_addc_u32      s55, s15, 0
 
 main_loop:
 		# const uint2 spMix = as_uint2(R[readReg0] ^ R[readReg1]);
@@ -421,7 +432,7 @@ fsqrt_r_sub0:
 		v_mov_b32       v68, v42
 		v_mov_b32       v69, v43
 		s_mov_b64       exec, 1
-		s_setpc_b64     s[50:51]
+		s_setpc_b64     s[60:61]
 
 fsqrt_r_sub1:
 		s_mov_b64       exec, 3
@@ -442,7 +453,7 @@ fsqrt_r_sub1:
 		v_mov_b32       v70, v42
 		v_mov_b32       v71, v43
 		s_mov_b64       exec, 1
-		s_setpc_b64     s[50:51]
+		s_setpc_b64     s[60:61]
 
 fsqrt_r_sub2:
 		s_mov_b64       exec, 3
@@ -463,7 +474,7 @@ fsqrt_r_sub2:
 		v_mov_b32       v72, v42
 		v_mov_b32       v73, v43
 		s_mov_b64       exec, 1
-		s_setpc_b64     s[50:51]
+		s_setpc_b64     s[60:61]
 
 fsqrt_r_sub3:
 		s_mov_b64       exec, 3
@@ -484,4 +495,92 @@ fsqrt_r_sub3:
 		v_mov_b32       v74, v42
 		v_mov_b32       v75, v43
 		s_mov_b64       exec, 1
-		s_setpc_b64     s[50:51]
+		s_setpc_b64     s[60:61]
+
+fdiv_m_sub0:
+		v_or_b32        v28, v28, v78
+		v_and_or_b32    v29, v29, v77, v79
+		s_setreg_b32    hwreg(mode, 2, 2), s67
+		v_div_scale_f64 v[42:43], s[14:15], v[28:29], v[28:29], v[68:69]
+		v_div_scale_f64 v[46:47], vcc, v[68:69], v[28:29], v[68:69]
+		v_rcp_f64       v[48:49], v[42:43]
+		v_fma_f64       v[80:81], -v[42:43], v[48:49], 1.0
+		v_fma_f64       v[48:49], v[48:49], v[80:81], v[48:49]
+		v_mul_f64       v[80:81], v[46:47], v[48:49]
+		v_fma_f64       v[42:43], -v[42:43], v[80:81], v[46:47]
+		s_setreg_b32    hwreg(mode, 2, 2), s66
+		v_div_fmas_f64  v[42:43], v[42:43], v[48:49], v[80:81]
+		v_div_fixup_f64 v[80:81], v[42:43], v[28:29], v[68:69]
+		v_cmpx_eq_f64   s[14:15], v[68:69], v[28:29]
+		v_cvt_f64_f32   v[80:81], 1.0
+		s_mov_b64       exec, 3
+		v_mov_b32       v68, v80
+		v_mov_b32       v69, v81
+		s_mov_b64       exec, 1
+		s_setpc_b64     s[60:61]
+
+fdiv_m_sub1:
+		v_or_b32        v28, v28, v78
+		v_and_or_b32    v29, v29, v77, v79
+		s_setreg_b32    hwreg(mode, 2, 2), s67
+		v_div_scale_f64 v[42:43], s[14:15], v[28:29], v[28:29], v[70:71]
+		v_div_scale_f64 v[46:47], vcc, v[70:71], v[28:29], v[70:71]
+		v_rcp_f64       v[48:49], v[42:43]
+		v_fma_f64       v[80:81], -v[42:43], v[48:49], 1.0
+		v_fma_f64       v[48:49], v[48:49], v[80:81], v[48:49]
+		v_mul_f64       v[80:81], v[46:47], v[48:49]
+		v_fma_f64       v[42:43], -v[42:43], v[80:81], v[46:47]
+		s_setreg_b32    hwreg(mode, 2, 2), s66
+		v_div_fmas_f64  v[42:43], v[42:43], v[48:49], v[80:81]
+		v_div_fixup_f64 v[80:81], v[42:43], v[28:29], v[70:71]
+		v_cmpx_eq_f64   s[14:15], v[70:71], v[28:29]
+		v_cvt_f64_f32   v[80:81], 1.0
+		s_mov_b64       exec, 3
+		v_mov_b32       v70, v80
+		v_mov_b32       v71, v81
+		s_mov_b64       exec, 1
+		s_setpc_b64     s[60:61]
+
+fdiv_m_sub2:
+		v_or_b32        v28, v28, v78
+		v_and_or_b32    v29, v29, v77, v79
+		s_setreg_b32    hwreg(mode, 2, 2), s67
+		v_div_scale_f64 v[42:43], s[14:15], v[28:29], v[28:29], v[72:73]
+		v_div_scale_f64 v[46:47], vcc, v[72:73], v[28:29], v[72:73]
+		v_rcp_f64       v[48:49], v[42:43]
+		v_fma_f64       v[80:81], -v[42:43], v[48:49], 1.0
+		v_fma_f64       v[48:49], v[48:49], v[80:81], v[48:49]
+		v_mul_f64       v[80:81], v[46:47], v[48:49]
+		v_fma_f64       v[42:43], -v[42:43], v[80:81], v[46:47]
+		s_setreg_b32    hwreg(mode, 2, 2), s66
+		v_div_fmas_f64  v[42:43], v[42:43], v[48:49], v[80:81]
+		v_div_fixup_f64 v[80:81], v[42:43], v[28:29], v[72:73]
+		v_cmpx_eq_f64   s[14:15], v[72:73], v[28:29]
+		v_cvt_f64_f32   v[80:81], 1.0
+		s_mov_b64       exec, 3
+		v_mov_b32       v72, v80
+		v_mov_b32       v73, v81
+		s_mov_b64       exec, 1
+		s_setpc_b64     s[60:61]
+
+fdiv_m_sub3:
+		v_or_b32        v28, v28, v78
+		v_and_or_b32    v29, v29, v77, v79
+		s_setreg_b32    hwreg(mode, 2, 2), s67
+		v_div_scale_f64 v[42:43], s[14:15], v[28:29], v[28:29], v[74:75]
+		v_div_scale_f64 v[46:47], vcc, v[74:75], v[28:29], v[74:75]
+		v_rcp_f64       v[48:49], v[42:43]
+		v_fma_f64       v[80:81], -v[42:43], v[48:49], 1.0
+		v_fma_f64       v[48:49], v[48:49], v[80:81], v[48:49]
+		v_mul_f64       v[80:81], v[46:47], v[48:49]
+		v_fma_f64       v[42:43], -v[42:43], v[80:81], v[46:47]
+		s_setreg_b32    hwreg(mode, 2, 2), s66
+		v_div_fmas_f64  v[42:43], v[42:43], v[48:49], v[80:81]
+		v_div_fixup_f64 v[80:81], v[42:43], v[28:29], v[74:75]
+		v_cmpx_eq_f64   s[14:15], v[74:75], v[28:29]
+		v_cvt_f64_f32   v[80:81], 1.0
+		s_mov_b64       exec, 3
+		v_mov_b32       v74, v80
+		v_mov_b32       v75, v81
+		s_mov_b64       exec, 1
+		s_setpc_b64     s[60:61]
