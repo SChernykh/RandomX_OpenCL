@@ -985,7 +985,7 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			*(p++) = 0xbefe0181u;
 		}
 
-		// 44 + 132 = 160 bytes
+		// 44 + 116 = 160 bytes
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_FDIV_M;
