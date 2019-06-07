@@ -132,8 +132,7 @@ begin:
 		s_mov_b64       exec, s[6:7]
 
 		# compiled program size
-		s_mov_b32       s6, s8
-		s_mov_b32       s7, s9
+		s_mov_b64       s[6:7], s[8:9]
 		s_mulk_i32      s6, 10016
 
 		v_add3_u32      v5, v0, v5, 64
@@ -220,6 +219,18 @@ begin:
 
 		# sign mask (used in FSQRT_R)
 		v_mov_b32       v82, 0x80000000
+
+		# get addresses of FSQRT_R subroutines
+		s_getpc_b64 s[14:15]
+cur_addr:
+		s_add_u32       s40, s14, fsqrt_r_sub0 - cur_addr
+		s_addc_u32      s41, s15, 0
+		s_add_u32       s42, s14, fsqrt_r_sub1 - cur_addr
+		s_addc_u32      s43, s15, 0
+		s_add_u32       s44, s14, fsqrt_r_sub2 - cur_addr
+		s_addc_u32      s45, s15, 0
+		s_add_u32       s46, s14, fsqrt_r_sub3 - cur_addr
+		s_addc_u32      s47, s15, 0
 
 main_loop:
 		# const uint2 spMix = as_uint2(R[readReg0] ^ R[readReg1]);
@@ -390,3 +401,87 @@ main_loop_end:
 
 program_end:
 		s_endpgm
+
+fsqrt_r_sub0:
+		s_mov_b64       exec, 3
+		s_setreg_b32    hwreg(mode, 2, 2), s67
+		v_rsq_f64       v[28:29], v[68:69]
+		v_mul_f64       v[42:43], v[28:29], v[68:69]
+		v_mul_f64       v[48:49], v[28:29], 0.5
+		v_mov_b32       v46, v48
+		v_xor_b32       v47, v49, v82
+		v_fma_f64       v[46:47], v[46:47], v[42:43], 0.5
+		v_fma_f64       v[42:43], v[42:43], v[46:47], v[42:43]
+		v_fma_f64       v[48:49], v[48:49], v[46:47], v[48:49]
+		v_fma_f64       v[46:47], -v[42:43], v[42:43], v[68:69]
+		s_setreg_b32    hwreg(mode, 2, 2), s66
+		v_fma_f64       v[42:43], v[46:47], v[48:49], v[42:43]
+		v_cmpx_class_f64 s[14:15], v[68:69], s[68:69]
+		s_xor_b64       exec, exec, 3
+		v_mov_b32       v68, v42
+		v_mov_b32       v69, v43
+		s_mov_b64       exec, 1
+		s_setpc_b64     s[50:51]
+
+fsqrt_r_sub1:
+		s_mov_b64       exec, 3
+		s_setreg_b32    hwreg(mode, 2, 2), s67
+		v_rsq_f64       v[28:29], v[70:71]
+		v_mul_f64       v[42:43], v[28:29], v[70:71]
+		v_mul_f64       v[48:49], v[28:29], 0.5
+		v_mov_b32       v46, v48
+		v_xor_b32       v47, v49, v82
+		v_fma_f64       v[46:47], v[46:47], v[42:43], 0.5
+		v_fma_f64       v[42:43], v[42:43], v[46:47], v[42:43]
+		v_fma_f64       v[48:49], v[48:49], v[46:47], v[48:49]
+		v_fma_f64       v[46:47], -v[42:43], v[42:43], v[70:71]
+		s_setreg_b32    hwreg(mode, 2, 2), s66
+		v_fma_f64       v[42:43], v[46:47], v[48:49], v[42:43]
+		v_cmpx_class_f64 s[14:15], v[70:71], s[68:69]
+		s_xor_b64       exec, exec, 3
+		v_mov_b32       v70, v42
+		v_mov_b32       v71, v43
+		s_mov_b64       exec, 1
+		s_setpc_b64     s[50:51]
+
+fsqrt_r_sub2:
+		s_mov_b64       exec, 3
+		s_setreg_b32    hwreg(mode, 2, 2), s67
+		v_rsq_f64       v[28:29], v[72:73]
+		v_mul_f64       v[42:43], v[28:29], v[72:73]
+		v_mul_f64       v[48:49], v[28:29], 0.5
+		v_mov_b32       v46, v48
+		v_xor_b32       v47, v49, v82
+		v_fma_f64       v[46:47], v[46:47], v[42:43], 0.5
+		v_fma_f64       v[42:43], v[42:43], v[46:47], v[42:43]
+		v_fma_f64       v[48:49], v[48:49], v[46:47], v[48:49]
+		v_fma_f64       v[46:47], -v[42:43], v[42:43], v[72:73]
+		s_setreg_b32    hwreg(mode, 2, 2), s66
+		v_fma_f64       v[42:43], v[46:47], v[48:49], v[42:43]
+		v_cmpx_class_f64 s[14:15], v[72:73], s[68:69]
+		s_xor_b64       exec, exec, 3
+		v_mov_b32       v72, v42
+		v_mov_b32       v73, v43
+		s_mov_b64       exec, 1
+		s_setpc_b64     s[50:51]
+
+fsqrt_r_sub3:
+		s_mov_b64       exec, 3
+		s_setreg_b32    hwreg(mode, 2, 2), s67
+		v_rsq_f64       v[28:29], v[74:75]
+		v_mul_f64       v[42:43], v[28:29], v[74:75]
+		v_mul_f64       v[48:49], v[28:29], 0.5
+		v_mov_b32       v46, v48
+		v_xor_b32       v47, v49, v82
+		v_fma_f64       v[46:47], v[46:47], v[42:43], 0.5
+		v_fma_f64       v[42:43], v[42:43], v[46:47], v[42:43]
+		v_fma_f64       v[48:49], v[48:49], v[46:47], v[48:49]
+		v_fma_f64       v[46:47], -v[42:43], v[42:43], v[74:75]
+		s_setreg_b32    hwreg(mode, 2, 2), s66
+		v_fma_f64       v[42:43], v[46:47], v[48:49], v[42:43]
+		v_cmpx_class_f64 s[14:15], v[74:75], s[68:69]
+		s_xor_b64       exec, exec, 3
+		v_mov_b32       v74, v42
+		v_mov_b32       v75, v43
+		s_mov_b64       exec, 1
+		s_setpc_b64     s[50:51]
