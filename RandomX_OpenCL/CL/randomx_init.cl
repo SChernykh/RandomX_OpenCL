@@ -56,7 +56,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 47.5*7 = 332.5 bytes on average
 #define RANDOMX_FREQ_ISUB_M         7
 
-// 25.5*16 = 408 bytes on average
+// 24.75*16 = 396 bytes on average
 #define RANDOMX_FREQ_IMUL_R        16
 
 // 63.5*4 = 254 bytes on average
@@ -128,8 +128,8 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 28*16 = 448 bytes
 #define RANDOMX_FREQ_ISTORE        16
 
-// Total: 4891.5 + 4(s_setpc_b64) = 4895.5 bytes on average
-// Real average program size: 4872 bytes
+// Total: 4879.5 + 4(s_setpc_b64) = 4883.5 bytes on average
+// Real average program size: 4866 bytes
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -439,11 +439,11 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			*(p++) = 0x960fff10u | (dst << 1);
 			*(p++) = inst.y;
 
-			// s_mul_i32 s14, s16, (imm32 < 0) ? -1 : 0
-			*(p++) = 0x920e0010u | (dst << 1) | ((as_int(inst.y) < 0) ? 0xc100 : 0x8000);
-
-			// s_add_u32 s15, s15, s14
-			*(p++) = 0x800f0e0fu;
+			if (as_int(inst.y) < 0) // p = 1/2
+			{
+				// s_sub_u32 s15, s15, s(16 + dst * 2)
+				*(p++) = 0x808f100fu | (dst << 9);
+			}
 
 			// s_mul_i32 s14, s(17 + dst * 2), imm32
 			*(p++) = 0x920eff11u | (dst << 1);
@@ -457,7 +457,7 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			*(p++) = inst.y;
 		}
 
-		// 24*7/8 + 36*1/8 = 25.5 bytes on average
+		// 24*7/8 + 28*1/8 + 4*1/16 = 24.75 bytes on average
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_IMUL_R;
