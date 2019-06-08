@@ -92,28 +92,28 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 10.5*4 = 42 bytes on average
 #define RANDOMX_FREQ_ISWAP_R        4
 
-// 28*8 = 224 bytes
+// 20*8 = 160 bytes
 #define RANDOMX_FREQ_FSWAP_R        8
 
-// 16*20 = 320 bytes
+// 8*20 = 160 bytes
 #define RANDOMX_FREQ_FADD_R        20
 
-// 56*5 = 280 bytes
+// 40*5 = 200 bytes
 #define RANDOMX_FREQ_FADD_M         5
 
-// 16*20 = 320 bytes
+// 8*20 = 160 bytes
 #define RANDOMX_FREQ_FSUB_R        20
 
-// 56*5 = 280 bytes
+// 40*5 = 200 bytes
 #define RANDOMX_FREQ_FSUB_M         5
 
-// 12*6 = 72 bytes
+// 4*6 = 24 bytes
 #define RANDOMX_FREQ_FSCAL_R        6
 
-// 16*20 = 320 bytes
+// 8*20 = 160 bytes
 #define RANDOMX_FREQ_FMUL_R        20
 
-// 48*4 = 192 bytes
+// 36*4 = 144 bytes
 #define RANDOMX_FREQ_FDIV_M         4
 
 // 4*6 = 24 bytes
@@ -128,8 +128,8 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 28*16 = 448 bytes
 #define RANDOMX_FREQ_ISTORE        16
 
-// Total: 5691.5 + 4(s_setpc_b64) = 5695.5 bytes on average
-// Real average program size: 5672 bytes
+// Total: 4891.5 + 4(s_setpc_b64) = 4895.5 bytes on average
+// Real average program size: 4872 bytes
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -224,9 +224,6 @@ __global uint* jit_scratchpad_calc_address_fp(__global uint* p, uint src, uint i
 	*(p++) = 0x810eff10u | (src << 1);
 	*(p++) = imm32;
 
-	// s_mov_b64 exec, 3
-	*(p++) = 0xbefe0183u;
-
 	// v_and_b32 v28, s14, mask_reg
 	*(p++) = 0x2638000eu | (mask_reg << 9);
 
@@ -254,9 +251,6 @@ __global uint* jit_scratchpad_load_fp(__global uint* p, uint lane_index, uint vg
 	*(p++) = 0xdc508000u;
 	*(p++) = 0x0000001cu | (vgpr_index << 24);
 
-	// s_mov_b64 exec, 1
-	*(p++) = 0xbefe0181u;
-
 	return p;
 }
 
@@ -265,9 +259,6 @@ __global uint* jit_scratchpad_load2_fp(__global uint* p, uint lane_index, uint v
 	// s_waitcnt vmcnt(N)
 	if (vmcnt >= 0)
 		*(p++) = 0xbf8c0f70u | (vmcnt & 15) | ((vmcnt >> 4) << 14);
-
-	// s_mov_b64 exec, 3
-	*(p++) = 0xbefe0183u;
 
 	// v_cvt_f64_i32 v[28:29], vgpr_index
 	*(p++) = 0x7e380900u | vgpr_index;
@@ -717,9 +708,6 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 
 	if (opcode < RANDOMX_FREQ_FSWAP_R)
 	{
-		// s_mov_b64 exec, 3
-		*(p++) = 0xbefe0183u;
-
 		// ds_swizzle_b32 v(60 + dst * 2), v(60 + dst * 2) offset:0x8001
 		*(p++) = 0xd87a8001u;
 		*(p++) = 0x3c00003cu + (dst << 1) + (dst << 25);
@@ -728,30 +716,21 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		*(p++) = 0xd87a8001u;
 		*(p++) = 0x3d00003du + (dst << 1) + (dst << 25);
 
-		// s_mov_b64 exec, 1
-		*(p++) = 0xbefe0181u;
-
 		// s_waitcnt lgkmcnt(0)
 		*(p++) = 0xbf8cc07fu;
 
-		// 28 bytes
+		// 20 bytes
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_FSWAP_R;
 
 	if (opcode < RANDOMX_FREQ_FADD_R)
 	{
-		// s_mov_b64 exec, 3
-		*(p++) = 0xbefe0183u;
-
 		// v_add_f64 v[60 + dst * 2:61 + dst * 2], v[60 + dst * 2:61 + dst * 2], v[52 + src * 2:53 + src * 2]
 		*(p++) = 0xd280003cu + ((dst & 3) << 1);
 		*(p++) = 0x0002693cu + ((dst & 3) << 1) + ((src & 3) << 10);
 
-		// s_mov_b64 exec, 1
-		*(p++) = 0xbefe0181u;
-
-		// 16 bytes
+		// 8 bytes
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_FADD_R;
@@ -771,29 +750,20 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			// v_add_f64 v[60 + dst * 2:61 + dst * 2], v[60 + dst * 2:61 + dst * 2], v[28:29]
 			*(p++) = 0xd280003cu + ((dst & 3) << 1);
 			*(p++) = 0x0002393cu + ((dst & 3) << 1);
-
-			// s_mov_b64 exec, 1
-			*(p++) = 0xbefe0181u;
 		}
 
-		// 44 + 12 = 56 bytes
+		// 32 + 8 = 40 bytes
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_FADD_M;
 
 	if (opcode < RANDOMX_FREQ_FSUB_R)
 	{
-		// s_mov_b64 exec, 3
-		*(p++) = 0xbefe0183u;
-
 		// v_add_f64 v[60 + dst * 2:61 + dst * 2], v[60 + dst * 2:61 + dst * 2], -v[52 + src * 2:53 + src * 2]
 		*(p++) = 0xd280003cu + ((dst & 3) << 1);
 		*(p++) = 0x4002693cu + ((dst & 3) << 1) + ((src & 3) << 10);
 
-		// s_mov_b64 exec, 1
-		*(p++) = 0xbefe0181u;
-
-		// 16 bytes
+		// 8 bytes
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_FSUB_R;
@@ -813,45 +783,30 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			// v_add_f64 v[60 + dst * 2:61 + dst * 2], v[60 + dst * 2:61 + dst * 2], -v[28:29]
 			*(p++) = 0xd280003cu + ((dst & 3) << 1);
 			*(p++) = 0x4002393cu + ((dst & 3) << 1);
-
-			// s_mov_b64 exec, 1
-			*(p++) = 0xbefe0181u;
 		}
 
-		// 44 + 12 = 56 bytes
+		// 32 + 8 = 40 bytes
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_FSUB_M;
 
 	if (opcode < RANDOMX_FREQ_FSCAL_R)
 	{
-		// s_mov_b64 exec, 3
-		*(p++) = 0xbefe0183u;
-
 		// v_xor_b32 v(61 + dst * 2), v(61 + dst * 2), v51
 		*(p++) = 0x2a7a673du + ((dst & 3) << 1) + ((dst & 3) << 18);
 
-		// s_mov_b64 exec, 1
-		*(p++) = 0xbefe0181u;
-
-		// 12 bytes
+		// 4 bytes
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_FSCAL_R;
 
 	if (opcode < RANDOMX_FREQ_FMUL_R)
 	{
-		// s_mov_b64 exec, 3
-		*(p++) = 0xbefe0183u;
-
 		// v_mul_f64 v[68 + dst * 2:69 + dst * 2], v[68 + dst * 2:69 + dst * 2], v[52 + src * 2:53 + src * 2]
 		*(p++) = 0xd2810044u + ((dst & 3) << 1);
 		*(p++) = 0x00026944u + ((dst & 3) << 1) + ((src & 3) << 10);
 
-		// s_mov_b64 exec, 1
-		*(p++) = 0xbefe0181u;
-
-		// 16 bytes
+		// 8 bytes
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_FMUL_R;
@@ -872,7 +827,7 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			*(p++) = 0xbebc1e30u + ((dst & 3) << 1);
 		}
 
-		// 44 + 4 = 48 bytes
+		// 32 + 4 = 36 bytes
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_FDIV_M;

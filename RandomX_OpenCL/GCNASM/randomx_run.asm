@@ -325,7 +325,6 @@ main_loop:
 		ds_read2_b64    v[72:75], v41 offset0:20 offset1:22
 
 		# load VM integer registers
-		s_mov_b64 exec, 1
 		v_readlane_b32	s16, v34, 0
 		v_readlane_b32	s17, v35, 0
 		v_readlane_b32	s18, v34, 1
@@ -368,7 +367,6 @@ main_loop:
 
 		# Write out group F,E registers
 		# Write low 8 bytes from lane 0 and high 8 bytes from lane 1
-		s_mov_b64       exec, 3
 		ds_write2_b64   v41, v[60:61], v[62:63] offset0:8 offset1:10
 		ds_write2_b64   v41, v[64:65], v[66:67] offset0:12 offset1:14
 		ds_write2_b64   v41, v[68:69], v[70:71] offset0:16 offset1:18
@@ -422,7 +420,6 @@ program_end:
 		s_endpgm
 
 fsqrt_r_sub0:
-		s_mov_b64       exec, 3
 		s_setreg_b32    hwreg(mode, 2, 2), s67
 		v_rsq_f64       v[28:29], v[68:69]
 		v_mul_f64       v[42:43], v[28:29], v[68:69]
@@ -439,11 +436,10 @@ fsqrt_r_sub0:
 		s_xor_b64       exec, exec, 3
 		v_mov_b32       v68, v42
 		v_mov_b32       v69, v43
-		s_mov_b64       exec, 1
+		s_mov_b64       exec, 3
 		s_setpc_b64     s[60:61]
 
 fsqrt_r_sub1:
-		s_mov_b64       exec, 3
 		s_setreg_b32    hwreg(mode, 2, 2), s67
 		v_rsq_f64       v[28:29], v[70:71]
 		v_mul_f64       v[42:43], v[28:29], v[70:71]
@@ -460,11 +456,10 @@ fsqrt_r_sub1:
 		s_xor_b64       exec, exec, 3
 		v_mov_b32       v70, v42
 		v_mov_b32       v71, v43
-		s_mov_b64       exec, 1
+		s_mov_b64       exec, 3
 		s_setpc_b64     s[60:61]
 
 fsqrt_r_sub2:
-		s_mov_b64       exec, 3
 		s_setreg_b32    hwreg(mode, 2, 2), s67
 		v_rsq_f64       v[28:29], v[72:73]
 		v_mul_f64       v[42:43], v[28:29], v[72:73]
@@ -481,11 +476,10 @@ fsqrt_r_sub2:
 		s_xor_b64       exec, exec, 3
 		v_mov_b32       v72, v42
 		v_mov_b32       v73, v43
-		s_mov_b64       exec, 1
+		s_mov_b64       exec, 3
 		s_setpc_b64     s[60:61]
 
 fsqrt_r_sub3:
-		s_mov_b64       exec, 3
 		s_setreg_b32    hwreg(mode, 2, 2), s67
 		v_rsq_f64       v[28:29], v[74:75]
 		v_mul_f64       v[42:43], v[28:29], v[74:75]
@@ -502,7 +496,7 @@ fsqrt_r_sub3:
 		s_xor_b64       exec, exec, 3
 		v_mov_b32       v74, v42
 		v_mov_b32       v75, v43
-		s_mov_b64       exec, 1
+		s_mov_b64       exec, 3
 		s_setpc_b64     s[60:61]
 
 fdiv_m_sub0:
@@ -524,7 +518,6 @@ fdiv_m_sub0:
 		s_mov_b64       exec, 3
 		v_mov_b32       v68, v80
 		v_mov_b32       v69, v81
-		s_mov_b64       exec, 1
 		s_setpc_b64     s[60:61]
 
 fdiv_m_sub1:
@@ -546,7 +539,6 @@ fdiv_m_sub1:
 		s_mov_b64       exec, 3
 		v_mov_b32       v70, v80
 		v_mov_b32       v71, v81
-		s_mov_b64       exec, 1
 		s_setpc_b64     s[60:61]
 
 fdiv_m_sub2:
@@ -568,7 +560,6 @@ fdiv_m_sub2:
 		s_mov_b64       exec, 3
 		v_mov_b32       v72, v80
 		v_mov_b32       v73, v81
-		s_mov_b64       exec, 1
 		s_setpc_b64     s[60:61]
 
 fdiv_m_sub3:
@@ -590,10 +581,10 @@ fdiv_m_sub3:
 		s_mov_b64       exec, 3
 		v_mov_b32       v74, v80
 		v_mov_b32       v75, v81
-		s_mov_b64       exec, 1
 		s_setpc_b64     s[60:61]
 
 ismulh_r_sub:
+		s_mov_b64       exec, 1
 		v_mov_b32       v45, s14
 		v_mul_hi_u32    v40, s38, v45
 		v_mov_b32       v47, s15
@@ -613,9 +604,11 @@ ismulh_r_sub:
 		s_cselect_b64   s[34:35], s[14:15], 0
 		s_sub_u32       s14, s32, s34
 		s_subb_u32      s15, s33, s35
+		s_mov_b64       exec, 3
 		s_setpc_b64     s[60:61]
 
 imulh_r_sub:
+		s_mov_b64       exec, 1
 		v_mov_b32       v45, s38
 		v_mul_hi_u32    v40, s14, v45
 		v_mov_b32       v47, s39
@@ -627,4 +620,5 @@ imulh_r_sub:
 		v_addc_co_u32   v43, vcc, 0, v43, vcc
 		v_readlane_b32  s14, v42, 0
 		v_readlane_b32  s15, v43, 0
+		s_mov_b64       exec, 3
 		s_setpc_b64     s[60:61]
