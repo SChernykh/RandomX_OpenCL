@@ -251,6 +251,27 @@ cur_addr:
 		s_add_u32       s58, s14, imulh_r_sub - cur_addr
 		s_addc_u32      s59, s15, 0
 
+		# used in IXOR_R instruction
+		s_mov_b32       s63, -1
+
+		# used in CBRANCH instruction
+		s_mov_b32       s70, (0xFF << 8)
+		s_mov_b32       s71, (0xFF << 9)
+		s_mov_b32       s72, (0xFF << 10)
+		s_mov_b32       s73, (0xFF << 11)
+		s_mov_b32       s74, (0xFF << 12)
+		s_mov_b32       s75, (0xFF << 13)
+		s_mov_b32       s76, (0xFF << 14)
+		s_mov_b32       s77, (0xFF << 15)
+		s_mov_b32       s78, (0xFF << 16)
+		s_mov_b32       s79, (0xFF << 17)
+		s_mov_b32       s80, (0xFF << 18)
+		s_mov_b32       s81, (0xFF << 19)
+		s_mov_b32       s82, (0xFF << 20)
+		s_mov_b32       s83, (0xFF << 21)
+		s_mov_b32       s84, (0xFF << 22)
+		s_mov_b32       s85, (0xFF << 23)
+
 main_loop:
 		# const uint2 spMix = as_uint2(R[readReg0] ^ R[readReg1]);
 		ds_read_b64     v[24:25], v0

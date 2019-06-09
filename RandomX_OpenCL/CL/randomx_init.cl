@@ -80,7 +80,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 8*2 = 16 bytes
 #define RANDOMX_FREQ_INEG_R         2
 
-// 5.5*15 = 82.5 bytes
+// 4.75*15 = 71.25 bytes
 #define RANDOMX_FREQ_IXOR_R        15
 
 // 43.5*5 = 217.5 bytes on average
@@ -119,7 +119,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 4*6 = 24 bytes
 #define RANDOMX_FREQ_FSQRT_R        6
 
-// 24*16 = 384 bytes
+// 20*16 = 320 bytes
 #define RANDOMX_FREQ_CBRANCH       16
 
 // 20*1 = 20 bytes
@@ -128,8 +128,8 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 28*16 = 448 bytes
 #define RANDOMX_FREQ_ISTORE        16
 
-// Total: 4879.5 + 4(s_setpc_b64) = 4883.5 bytes on average
-// Real average program size: 4866 bytes
+// Total: 4804.25 + 4(s_setpc_b64) = 4808.25 bytes on average
+// Real average program size: 4791 bytes
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -619,18 +619,24 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		}
 		else // p = 1/8
 		{
-			// s_mov_b32 s32, imm32
-			*(p++) = 0xbea000ffu;
-			*(p++) = inst.y;
+			if (as_int(inst.y) < 0) // p = 1/2
+			{
+				// s_mov_b32 s62, imm32
+				*(p++) = 0xbebe00ffu;
+				*(p++) = inst.y;
 
-			// s_mov_b32 s33, (inst.y < 0) ? -1 : 0
-			*(p++) = 0xbea10000u | ((as_int(inst.y) < 0) ? 0xc1 : 0x80);
-
-			// s_xor_b64 s[16 + dst * 2:17 + dst * 2], s[16 + dst * 2:17 + dst * 2], s[32:33]
-			*(p++) = 0x88902010u | (dst << 1) | (dst << 17);
+				// s_xor_b64 s[16 + dst * 2:17 + dst * 2], s[16 + dst * 2:17 + dst * 2], s[62:63]
+				*(p++) = 0x88903e10u | (dst << 1) | (dst << 17);
+			}
+			else
+			{
+				// s_xor_b32 s(16 + dst * 2), s(16 + dst * 2), imm32
+				*(p++) = 0x8810ff10u | (dst << 1) | (dst << 17);
+				*(p++) = inst.y;
+			}
 		}
 
-		// 4*7/8 + 16/8 = 5.5 bytes on average
+		// 4*7/8 + 12/16 + 8/16 = 4.75 bytes on average
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_IXOR_R;
@@ -855,17 +861,16 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		// s_addc_u32 s(17 + dst * 2), s(17 + dst * 2), ((imm < 0) ? -1 : 0)
 		*(p++) = 0x82110011u | (dst << 1) | (dst << 17) | (((as_int(imm) < 0) ? 0xc1 : 0x80) << 8);
 
-		const uint conditionMask = ((1 << RANDOMX_JUMP_BITS) - 1) << shift;
+		const uint conditionMaskReg = 70 + (mod >> 4);
 
-		// s_and_b32 s14, s(16 + dst * 2), conditionMask
-		*(p++) = 0x860eff10u | (dst << 1);
-		*(p++) = conditionMask;
+		// s_and_b32 s14, s(16 + dst * 2), conditionMaskReg
+		*(p++) = 0x860e0010u | (dst << 1) | (conditionMaskReg << 8);
 
 		// s_cbranch_scc0 target
 		const int delta = ((last_branch_target - p) - 1);
 		*(p++) = 0xbf840000u | (delta & 0xFFFF);
 
-		// 24 bytes
+		// 20 bytes
 		return p;
 	}
 	opcode -= RANDOMX_FREQ_CBRANCH;
