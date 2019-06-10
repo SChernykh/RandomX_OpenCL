@@ -443,6 +443,13 @@ program_end:
 fsqrt_r_sub0:
 		s_setreg_b32    hwreg(mode, 2, 2), s67
 		v_rsq_f64       v[28:29], v[68:69]
+
+		# Improve initial approximation (can be skipped)
+		#v_mul_f64       v[42:43], v[28:29], v[68:69]
+		#v_mul_f64       v[48:49], v[28:29], -0.5
+		#v_fma_f64       v[48:49], v[48:49], v[42:43], 0.5
+		#v_fma_f64       v[28:29], v[28:29], v[48:49], v[28:29]
+
 		v_mul_f64       v[42:43], v[28:29], v[68:69]
 		v_mul_f64       v[48:49], v[28:29], 0.5
 		v_mov_b32       v46, v48
@@ -463,6 +470,13 @@ fsqrt_r_sub0:
 fsqrt_r_sub1:
 		s_setreg_b32    hwreg(mode, 2, 2), s67
 		v_rsq_f64       v[28:29], v[70:71]
+
+		# Improve initial approximation (can be skipped)
+		#v_mul_f64       v[42:43], v[28:29], v[70:71]
+		#v_mul_f64       v[48:49], v[28:29], -0.5
+		#v_fma_f64       v[48:49], v[48:49], v[42:43], 0.5
+		#v_fma_f64       v[28:29], v[28:29], v[48:49], v[28:29]
+
 		v_mul_f64       v[42:43], v[28:29], v[70:71]
 		v_mul_f64       v[48:49], v[28:29], 0.5
 		v_mov_b32       v46, v48
@@ -483,6 +497,13 @@ fsqrt_r_sub1:
 fsqrt_r_sub2:
 		s_setreg_b32    hwreg(mode, 2, 2), s67
 		v_rsq_f64       v[28:29], v[72:73]
+
+		# Improve initial approximation (can be skipped)
+		#v_mul_f64       v[42:43], v[28:29], v[72:73]
+		#v_mul_f64       v[48:49], v[28:29], -0.5
+		#v_fma_f64       v[48:49], v[48:49], v[42:43], 0.5
+		#v_fma_f64       v[28:29], v[28:29], v[48:49], v[28:29]
+
 		v_mul_f64       v[42:43], v[28:29], v[72:73]
 		v_mul_f64       v[48:49], v[28:29], 0.5
 		v_mov_b32       v46, v48
@@ -503,6 +524,13 @@ fsqrt_r_sub2:
 fsqrt_r_sub3:
 		s_setreg_b32    hwreg(mode, 2, 2), s67
 		v_rsq_f64       v[28:29], v[74:75]
+
+		# Improve initial approximation (can be skipped)
+		#v_mul_f64       v[42:43], v[28:29], v[74:75]
+		#v_mul_f64       v[48:49], v[28:29], -0.5
+		#v_fma_f64       v[48:49], v[48:49], v[42:43], 0.5
+		#v_fma_f64       v[28:29], v[28:29], v[48:49], v[28:29]
+
 		v_mul_f64       v[42:43], v[28:29], v[74:75]
 		v_mul_f64       v[48:49], v[28:29], 0.5
 		v_mov_b32       v46, v48
