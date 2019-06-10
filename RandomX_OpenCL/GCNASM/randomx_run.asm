@@ -82,8 +82,8 @@ begin:
 		s_setreg_b32    hwreg(mode, 2, 2), s66
 		s_mov_b32       s67, 0
 
-		# used in FSQRT_R to check for infinity (v_cmpx_class_f64)
-		s_mov_b32       s68, 512
+		# used in FSQRT_R to check for "positive normal value" (v_cmpx_class_f64)
+		s_mov_b32       s68, 256
 		s_mov_b32       s69, 0
 
 		v_add_u32       v1, s0, v1
@@ -461,7 +461,6 @@ fsqrt_r_sub0:
 		s_setreg_b32    hwreg(mode, 2, 2), s66
 		v_fma_f64       v[42:43], v[46:47], v[48:49], v[42:43]
 		v_cmpx_class_f64 s[14:15], v[68:69], s[68:69]
-		s_xor_b64       exec, exec, 3
 		v_mov_b32       v68, v42
 		v_mov_b32       v69, v43
 		s_mov_b64       exec, 3
@@ -488,7 +487,6 @@ fsqrt_r_sub1:
 		s_setreg_b32    hwreg(mode, 2, 2), s66
 		v_fma_f64       v[42:43], v[46:47], v[48:49], v[42:43]
 		v_cmpx_class_f64 s[14:15], v[70:71], s[68:69]
-		s_xor_b64       exec, exec, 3
 		v_mov_b32       v70, v42
 		v_mov_b32       v71, v43
 		s_mov_b64       exec, 3
@@ -515,7 +513,6 @@ fsqrt_r_sub2:
 		s_setreg_b32    hwreg(mode, 2, 2), s66
 		v_fma_f64       v[42:43], v[46:47], v[48:49], v[42:43]
 		v_cmpx_class_f64 s[14:15], v[72:73], s[68:69]
-		s_xor_b64       exec, exec, 3
 		v_mov_b32       v72, v42
 		v_mov_b32       v73, v43
 		s_mov_b64       exec, 3
@@ -542,7 +539,6 @@ fsqrt_r_sub3:
 		s_setreg_b32    hwreg(mode, 2, 2), s66
 		v_fma_f64       v[42:43], v[46:47], v[48:49], v[42:43]
 		v_cmpx_class_f64 s[14:15], v[74:75], s[68:69]
-		s_xor_b64       exec, exec, 3
 		v_mov_b32       v74, v42
 		v_mov_b32       v75, v43
 		s_mov_b64       exec, 3
