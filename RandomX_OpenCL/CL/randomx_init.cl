@@ -86,23 +86,26 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 43.5*5 = 217.5 bytes on average
 #define RANDOMX_FREQ_IXOR_M         5
 
-// 15.5*10 = 155 bytes on average
-#define RANDOMX_FREQ_IROR_R        10
+// 15.5*8 = 124 bytes on average
+#define RANDOMX_FREQ_IROR_R         8
+
+// 15.5*2 = 31 bytes on average
+#define RANDOMX_FREQ_IROL_R         2
 
 // 10.5*4 = 42 bytes on average
 #define RANDOMX_FREQ_ISWAP_R        4
 
-// 20*8 = 160 bytes
-#define RANDOMX_FREQ_FSWAP_R        8
+// 20*4 = 80 bytes
+#define RANDOMX_FREQ_FSWAP_R        4
 
-// 8*20 = 160 bytes
-#define RANDOMX_FREQ_FADD_R        20
+// 8*16 = 128 bytes
+#define RANDOMX_FREQ_FADD_R        16
 
 // 40*5 = 200 bytes
 #define RANDOMX_FREQ_FADD_M         5
 
-// 8*20 = 160 bytes
-#define RANDOMX_FREQ_FSUB_R        20
+// 8*16 = 128 bytes
+#define RANDOMX_FREQ_FSUB_R        16
 
 // 40*5 = 200 bytes
 #define RANDOMX_FREQ_FSUB_M         5
@@ -110,8 +113,8 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 4*6 = 24 bytes
 #define RANDOMX_FREQ_FSCAL_R        6
 
-// 8*20 = 160 bytes
-#define RANDOMX_FREQ_FMUL_R        20
+// 8*32 = 256 bytes
+#define RANDOMX_FREQ_FMUL_R        32
 
 // 36*4 = 144 bytes
 #define RANDOMX_FREQ_FDIV_M         4
@@ -128,8 +131,8 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // 28*16 = 448 bytes
 #define RANDOMX_FREQ_ISTORE        16
 
-// Total: 4804.25 + 4(s_setpc_b64) = 4808.25 bytes on average
-// Real average program size: 4791 bytes
+// Total: 4756.25 + 4(s_setpc_b64) = 4760.25 bytes on average
+// Real average program size: 4743 bytes
 
 ulong getSmallPositiveFloatBits(const ulong entropy)
 {
@@ -666,22 +669,36 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 	}
 	opcode -= RANDOMX_FREQ_IXOR_M;
 
-	if (opcode < RANDOMX_FREQ_IROR_R)
+	if (opcode < RANDOMX_FREQ_IROR_R + RANDOMX_FREQ_IROL_R)
 	{
 		if (src != dst) // p = 7/8
 		{
-			// s_lshr_b64 s[32:33], s[16 + dst * 2:17 + dst * 2], s(16 + src * 2)
-			*(p++) = 0x8fa01010u | (dst << 1) | (src << 9);
+			if (opcode < RANDOMX_FREQ_IROR_R)
+			{
+				// s_lshr_b64 s[32:33], s[16 + dst * 2:17 + dst * 2], s(16 + src * 2)
+				*(p++) = 0x8fa01010u | (dst << 1) | (src << 9);
 
-			// s_sub_u32  s15, 64, s(16 + src * 2)
-			*(p++) = 0x808f10c0u | (src << 9);
+				// s_sub_u32  s15, 64, s(16 + src * 2)
+				*(p++) = 0x808f10c0u | (src << 9);
 
-			// s_lshl_b64 s[34:35], s[16 + dst * 2:17 + dst * 2], s15
-			*(p++) = 0x8ea20f10u | (dst << 1);
+				// s_lshl_b64 s[34:35], s[16 + dst * 2:17 + dst * 2], s15
+				*(p++) = 0x8ea20f10u | (dst << 1);
+			}
+			else
+			{
+				// s_lshl_b64 s[32:33], s[16 + dst * 2:17 + dst * 2], s(16 + src * 2)
+				*(p++) = 0x8ea01010u | (dst << 1) | (src << 9);
+
+				// s_sub_u32  s15, 64, s(16 + src * 2)
+				*(p++) = 0x808f10c0u | (src << 9);
+
+				// s_lshr_b64 s[34:35], s[16 + dst * 2:17 + dst * 2], s15
+				*(p++) = 0x8fa20f10u | (dst << 1);
+			}
 		}
 		else // p = 1/8
 		{
-			const uint shift = inst.y & 63;
+			const uint shift = ((opcode < RANDOMX_FREQ_IROR_R) ? inst.y : -inst.y) & 63;
 
 			// s_lshr_b64 s[32:33], s[16 + dst * 2:17 + dst * 2], shift
 			*(p++) = 0x8fa08010u | (dst << 1) | (shift << 8);
@@ -696,7 +713,7 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		// 12*7/8 + 8/8 + 4 = 15.5 bytes on average
 		return p;
 	}
-	opcode -= RANDOMX_FREQ_IROR_R;
+	opcode -= RANDOMX_FREQ_IROR_R + RANDOMX_FREQ_IROL_R;
 
 	if (opcode < RANDOMX_FREQ_ISWAP_R)
 	{
@@ -1137,13 +1154,13 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 			}
 			opcode -= RANDOMX_FREQ_IXOR_M;
 
-			if (opcode < RANDOMX_FREQ_IROR_R)
+			if (opcode < RANDOMX_FREQ_IROR_R + RANDOMX_FREQ_IROL_R)
 			{
 				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 				registerWasChanged |= 1u << dst;
 				continue;
 			}
-			opcode -= RANDOMX_FREQ_IROR_R;
+			opcode -= RANDOMX_FREQ_IROR_R + RANDOMX_FREQ_IROL_R;
 
 			if (opcode < RANDOMX_FREQ_ISWAP_R)
 			{

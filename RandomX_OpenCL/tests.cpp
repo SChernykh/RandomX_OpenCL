@@ -189,12 +189,12 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 
 		if (memcmp(entropy.data() + i * ENTROPY_SIZE, entropy.data() + ENTROPY_SIZE * intensity, ENTROPY_SIZE) != 0)
 		{
-			std::cerr << "fillAes1Rx4_entropy test (entropy) failed!" << std::endl;
+			std::cerr << "fillAes4Rx4_entropy test (entropy) failed!" << std::endl;
 			return false;
 		}
 	}
 
-	std::cout << "fillAes1Rx4_entropy test passed" << std::endl;
+	std::cout << "fillAes4Rx4_entropy test passed" << std::endl;
 
 	kernel = ctx.kernels[CL_HASHAES1RX4];
 	if (!clSetKernelArgs(kernel, scratchpads_gpu, registers_gpu, static_cast<uint32_t>(intensity)))
