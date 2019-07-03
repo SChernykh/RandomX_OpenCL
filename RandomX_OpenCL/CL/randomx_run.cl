@@ -60,7 +60,8 @@ __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratch
 	rounding_modes += idx;
 	programs += get_group_id(0) * (COMPILED_PROGRAM_SIZE / sizeof(uint));
 
-	((__local ulong2*) R)[sub] = ((__global ulong2*) registers)[sub];
+	// Copy registers (256 bytes) into shared memory: 64 workers, 4 bytes for each worker
+	((__local uint*) R)[sub] = ((__global uint*) registers)[sub];
 	barrier(CLK_LOCAL_MEM_FENCE);
 
 	if (sub >= 8)

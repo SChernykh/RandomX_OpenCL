@@ -96,12 +96,13 @@ begin:
 		v_add_co_u32    v3, vcc, s2, v3
 		v_mov_b32       v6, s3
 		v_addc_co_u32   v4, vcc, v6, v4, vcc
-		v_add_co_u32    v6, vcc, v3, v5
+		v_lshlrev_b32   v41, 2, v1
+		v_add_co_u32    v6, vcc, v3, v41
 		v_addc_co_u32   v7, vcc, v4, 0, vcc
-		global_load_dwordx4 v[6:9], v[6:7], off
+		global_load_dword v6, v[6:7], off
 		v_mov_b32       v0, 0
 		s_waitcnt       vmcnt(0)
-		ds_write2_b64   v5, v[6:7], v[8:9] offset1:1
+		ds_write_b32    v41, v6
 		s_waitcnt       lgkmcnt(0)
 		s_mov_b64       s[0:1], exec
 		v_cmpx_le_u32   s[2:3], v1, 7
