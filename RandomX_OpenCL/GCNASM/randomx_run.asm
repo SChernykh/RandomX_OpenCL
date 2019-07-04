@@ -134,7 +134,7 @@ begin:
 
 		# compiled program size
 		s_mov_b64       s[6:7], s[8:9]
-		s_mulk_i32      s6, 10016
+		s_mulk_i32      s6, 10048
 
 		v_add3_u32      v5, v0, v5, 64
 		s_mov_b64       s[8:9], exec
@@ -223,6 +223,9 @@ begin:
 
 		# High 32 bits of "1.0" constant (used in FDIV_M)
 		v_mov_b32       v83, (1023 << 20)
+
+		# Used to multiply FP64 values by 0.5
+		v_mov_b32       v84, (1 << 20)
 
 		s_getpc_b64 s[14:15]
 cur_addr:
@@ -455,8 +458,9 @@ fsqrt_r_sub0:
 		#v_fma_f64       v[28:29], v[28:29], v[48:49], v[28:29]
 
 		v_mul_f64       v[42:43], v[28:29], v[68:69]
-		v_mul_f64       v[48:49], v[28:29], 0.5
-		v_mov_b32       v46, v48
+		v_mov_b32       v48, v28
+		v_sub_u32       v49, v29, v84
+		v_mov_b32       v46, v28
 		v_xor_b32       v47, v49, v82
 		v_fma_f64       v[46:47], v[46:47], v[42:43], 0.5
 		v_fma_f64       v[42:43], v[42:43], v[46:47], v[42:43]
@@ -481,8 +485,9 @@ fsqrt_r_sub1:
 		#v_fma_f64       v[28:29], v[28:29], v[48:49], v[28:29]
 
 		v_mul_f64       v[42:43], v[28:29], v[70:71]
-		v_mul_f64       v[48:49], v[28:29], 0.5
-		v_mov_b32       v46, v48
+		v_mov_b32       v48, v28
+		v_sub_u32       v49, v29, v84
+		v_mov_b32       v46, v28
 		v_xor_b32       v47, v49, v82
 		v_fma_f64       v[46:47], v[46:47], v[42:43], 0.5
 		v_fma_f64       v[42:43], v[42:43], v[46:47], v[42:43]
@@ -507,8 +512,9 @@ fsqrt_r_sub2:
 		#v_fma_f64       v[28:29], v[28:29], v[48:49], v[28:29]
 
 		v_mul_f64       v[42:43], v[28:29], v[72:73]
-		v_mul_f64       v[48:49], v[28:29], 0.5
-		v_mov_b32       v46, v48
+		v_mov_b32       v48, v28
+		v_sub_u32       v49, v29, v84
+		v_mov_b32       v46, v28
 		v_xor_b32       v47, v49, v82
 		v_fma_f64       v[46:47], v[46:47], v[42:43], 0.5
 		v_fma_f64       v[42:43], v[42:43], v[46:47], v[42:43]
@@ -533,8 +539,9 @@ fsqrt_r_sub3:
 		#v_fma_f64       v[28:29], v[28:29], v[48:49], v[28:29]
 
 		v_mul_f64       v[42:43], v[28:29], v[74:75]
-		v_mul_f64       v[48:49], v[28:29], 0.5
-		v_mov_b32       v46, v48
+		v_mov_b32       v48, v28
+		v_sub_u32       v49, v29, v84
+		v_mov_b32       v46, v28
 		v_xor_b32       v47, v49, v82
 		v_fma_f64       v[46:47], v[46:47], v[42:43], 0.5
 		v_fma_f64       v[42:43], v[42:43], v[46:47], v[42:43]

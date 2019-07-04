@@ -1314,8 +1314,8 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 
 	__global int* prefecth_vgprs_stack = (__global int*)(p0 + prefetch_data_count + 1);
 
-	// v84 - v127 will be used for global memory loads
-	enum { num_prefetch_vgprs = 22 };
+	// v86 - v127 will be used for global memory loads
+	enum { num_prefetch_vgprs = 21 };
 
 	#pragma unroll
 	for (int i = 0; i < num_prefetch_vgprs; ++i)
