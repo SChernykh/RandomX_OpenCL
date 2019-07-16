@@ -56,7 +56,7 @@ __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratch
 	__local double* E = (__local double*)(R + 16);
 
 	registers += idx * REGISTERS_COUNT;
-	scratchpad += idx * (SCRATCHPAD_STRIDED ? SCRATCHPAD_STRIDE_SIZE : (SCRATCHPAD_SIZE + 64));
+	scratchpad += idx * (ulong)(SCRATCHPAD_STRIDED ? SCRATCHPAD_STRIDE_SIZE : (SCRATCHPAD_SIZE + 64));
 	rounding_modes += idx;
 	programs += get_group_id(0) * (COMPILED_PROGRAM_SIZE / sizeof(uint));
 
