@@ -71,5 +71,8 @@
     <CustomBuild Include="GCNASM\randomx_run.asm">
       <Filter>Source Files\GCNASM</Filter>
     </CustomBuild>
+    <CustomBuild Include="CL\randomx_vm.cl">
+      <Filter>Source Files\CL</Filter>
+    </CustomBuild>
   </ItemGroup>
 </Project>

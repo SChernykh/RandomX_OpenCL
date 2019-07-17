@@ -20,6 +20,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #include <chrono>
 #include <iomanip>
 #include <algorithm>
+#include <fstream>
 #include "opencl_helpers.h"
 #include "tests.h"
 #include "definitions.h"
@@ -69,6 +70,11 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 		return false;
 	}
 
+	if (!ctx.Compile("randomx_vm.bin", { RANDOMX_VM_CL }, { CL_INIT_VM }, "-cl-std=CL1.1 -Werror", ALWAYS_COMPILE))
+	{
+		return false;
+	}
+
 	if (!intensity)
 		intensity = std::min(ctx.device_max_alloc_size, ctx.device_global_mem_size) / SCRATCHPAD_SIZE;
 
@@ -78,10 +84,46 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 	std::cout << "Allocated " << intensity << " scratchpads" << std::endl << std::endl;
 
 	ALLOCATE_DEVICE_MEMORY(entropy_gpu, ctx, intensity * ENTROPY_SIZE);
+	ALLOCATE_DEVICE_MEMORY(vm_states_gpu, ctx, intensity * VM_STATE_SIZE);
+
+	cl_kernel kernel = ctx.kernels[CL_INIT_VM];
+	if (!clSetKernelArgs(kernel, entropy_gpu, vm_states_gpu))
+	{
+		return false;
+	}
+
+	cl_int err;
+	size_t global_work_size = intensity * 8;
+	size_t local_work_size = 64;
+
+	std::vector<uint8_t> entropy((intensity + 1) * ENTROPY_SIZE);
+	std::vector<uint8_t> vm_states(intensity * VM_STATE_SIZE);
+
+	{
+		uint64_t r = 123;
+		uint64_t* p = (uint64_t*) entropy.data();
+		for (size_t i = 0; i < intensity * ENTROPY_SIZE / sizeof(uint64_t); ++i)
+		{
+			r = r * 6364136223846793005ULL + 1442695040888963407ULL;
+			p[i] = r;
+		}
+	}
+
+	CL_CHECKED_CALL(clEnqueueWriteBuffer, ctx.queue, entropy_gpu, CL_FALSE, 0, intensity * ENTROPY_SIZE, entropy.data(), 0, nullptr, nullptr);
+
+	CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel, 1, nullptr, &global_work_size, &local_work_size, 0, nullptr, nullptr);
+	CL_CHECKED_CALL(clFinish, ctx.queue);
+
+	CL_CHECKED_CALL(clEnqueueReadBuffer, ctx.queue, vm_states_gpu, CL_TRUE, 0, intensity * VM_STATE_SIZE, vm_states.data(), 0, nullptr, nullptr);
+
+	{
+		std::ofstream f("vm_states.bin", std::ios::binary);
+		f.write((const char*) vm_states.data(), vm_states.size());
+	}
+
 	ALLOCATE_DEVICE_MEMORY(registers_gpu, ctx, intensity * REGISTERS_SIZE);
 
 	uint32_t zero = 0;
-	cl_int err;
 	CL_CHECKED_CALL(clEnqueueFillBuffer, ctx.queue, registers_gpu, &zero, sizeof(zero), 0, intensity * REGISTERS_SIZE, 0, nullptr, nullptr);
 
 	ALLOCATE_DEVICE_MEMORY(hash_gpu, ctx, intensity * INITIAL_HASH_SIZE);
@@ -91,14 +133,12 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 
 	ALLOCATE_DEVICE_MEMORY(nonce_gpu, ctx, sizeof(uint64_t));
 
-	cl_kernel kernel = ctx.kernels[CL_BLAKE2B_INITIAL_HASH];
+	kernel = ctx.kernels[CL_BLAKE2B_INITIAL_HASH];
 	if (!clSetKernelArgs(kernel, hash_gpu, blockTemplate_gpu, 0))
 	{
 		return false;
 	}
 
-	size_t global_work_size = intensity;
-	size_t local_work_size = 64;
 	CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel, 1, nullptr, &global_work_size, &local_work_size, 0, nullptr, nullptr);
 	CL_CHECKED_CALL(clFinish, ctx.queue);
 
@@ -177,8 +217,6 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 	local_work_size = 64;
 	CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel, 1, nullptr, &global_work_size, &local_work_size, 0, nullptr, nullptr);
 	CL_CHECKED_CALL(clFinish, ctx.queue);
-
-	std::vector<uint8_t> entropy(ENTROPY_SIZE * (intensity + 1));
 
 	CL_CHECKED_CALL(clEnqueueReadBuffer, ctx.queue, hash_gpu, CL_TRUE, 0, intensity * INITIAL_HASH_SIZE, hashes.data(), 0, nullptr, nullptr);
 	CL_CHECKED_CALL(clEnqueueReadBuffer, ctx.queue, entropy_gpu, CL_TRUE, 0, intensity * ENTROPY_SIZE, entropy.data(), 0, nullptr, nullptr);
