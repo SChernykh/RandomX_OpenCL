@@ -78,10 +78,10 @@ void blake2b_512_process_double_block_name(ulong *out, ulong* m, __global const 
 }
 
 __attribute__((reqd_work_group_size(64, 1, 1)))
-__kernel void blake2b_hash_registers_name(__global void *out, __global const void* in)
+__kernel void blake2b_hash_registers_name(__global void *out, __global const void* in, uint inStrideBytes)
 {
 	const uint global_index = get_global_id(0);
-	__global const ulong* p = ((__global const ulong*) in) + global_index * (in_len / sizeof(ulong));
+	__global const ulong* p = ((__global const ulong*) in) + global_index * (inStrideBytes / sizeof(ulong));
 	__global ulong* h = ((__global ulong*) out) + global_index * (out_len / sizeof(ulong));
 
 	ulong m[16] = { p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], p[13], p[14], p[15] };

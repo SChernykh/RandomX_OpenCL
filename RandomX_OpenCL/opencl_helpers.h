@@ -84,6 +84,9 @@ struct DevicePtr
 
 	bool Init(const OpenCLContext& ctx, size_t size, const char* debug_str)
 	{
+		if (!size)
+			return true;
+
 		cl_int err;
 		p = clCreateBuffer(ctx.context, CL_MEM_READ_WRITE, size, nullptr, &err);
 		if (err != CL_SUCCESS)
@@ -102,7 +105,7 @@ private:
 
 static_assert(sizeof(DevicePtr) == sizeof(cl_mem), "Invalid DevicePtr struct, check your compiler options");
 
-#define ALLOCATE_DEVICE_MEMORY(p, ctx, size) DevicePtr p(ctx, size, #p ", " __FILE__ ", line " STR2(__LINE__)); if (!p) return false;
+#define ALLOCATE_DEVICE_MEMORY(p, ctx, size) DevicePtr p(ctx, (size), #p ", " __FILE__ ", line " STR2(__LINE__)); if (!p && (size)) return false;
 
 template<cl_uint> bool _clSetKernelArg(cl_kernel) { return true; }
 

@@ -70,7 +70,7 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 		return false;
 	}
 
-	if (!ctx.Compile("randomx_vm.bin", { RANDOMX_VM_CL }, { CL_INIT_VM }, "-cl-std=CL1.1 -Werror", ALWAYS_COMPILE))
+	if (!ctx.Compile("randomx_vm.bin", { RANDOMX_VM_CL }, { CL_INIT_VM, CL_EXECUTE_VM }, "-D WORKERS_PER_HASH=8 -cl-std=CL1.1 -Werror", ALWAYS_COMPILE))
 	{
 		return false;
 	}
@@ -94,7 +94,7 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 
 	cl_int err;
 	size_t global_work_size = intensity * 8;
-	size_t local_work_size = 64;
+	size_t local_work_size = 32;
 
 	std::vector<uint8_t> entropy((intensity + 1) * ENTROPY_SIZE);
 	std::vector<uint8_t> vm_states(intensity * VM_STATE_SIZE);

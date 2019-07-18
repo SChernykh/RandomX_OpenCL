@@ -1,3 +1,23 @@
+/*
+Copyright (c) 2019 SChernykh
+Portions Copyright (c) 2018-2019 tevador
+
+This file is part of RandomX OpenCL.
+
+RandomX OpenCL is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+RandomX OpenCL is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
+*/
+
 #pragma OPENCL EXTENSION cl_khr_fp64 : enable
 
 //Dataset base size in bytes. Must be a power of 2.
@@ -53,24 +73,24 @@
 
 //Control instructions
 #define RANDOMX_FREQ_CBRANCH       16
-#define RANDOMX_FREQ_CFROUND        1
+#define RANDOMX_FREQ_CFROUND        0
 
 //Store instruction
 #define RANDOMX_FREQ_ISTORE        16
 
 //No-op instruction
-#define RANDOMX_FREQ_NOP            0
+#define RANDOMX_FREQ_NOP            1
 
 #define RANDOMX_DATASET_ITEM_SIZE 64
 
 #define RANDOMX_PROGRAM_SIZE 256
-#define WORKERS_PER_HASH 8
 #define HASH_SIZE 64
 #define ENTROPY_SIZE (128 + RANDOMX_PROGRAM_SIZE * 8)
 #define REGISTERS_SIZE 256
 #define IMM_BUF_SIZE (RANDOMX_PROGRAM_SIZE * 4 - REGISTERS_SIZE)
 #define IMM_INDEX_COUNT ((IMM_BUF_SIZE / 4) - 2)
 #define VM_STATE_SIZE (REGISTERS_SIZE + IMM_BUF_SIZE + RANDOMX_PROGRAM_SIZE * 4)
+#define ROUNDING_MODE (RANDOMX_FREQ_CFROUND ? -1 : 0)
 
 #define CacheLineSize 64
 #define ScratchpadL3Mask64 (RANDOMX_SCRATCHPAD_L3 - CacheLineSize)
@@ -84,9 +104,11 @@
 #define constExponentBits 0x300
 #define dynamicExponentBits 4
 #define staticExponentBits 4
+#define dynamicMantissaMask ((1UL << (mantissaSize + dynamicExponentBits)) - 1)
 
 #define RegistersCount 8
 #define RegisterCountFlt (RegistersCount / 2)
+#define ConditionMask ((1 << RANDOMX_JUMP_BITS) - 1)
 #define ConditionOffset RANDOMX_JUMP_OFFSET
 #define StoreL3Condition 14
 #define DatasetExtraItems (RANDOMX_DATASET_EXTRA_SIZE / RANDOMX_DATASET_ITEM_SIZE)
@@ -140,6 +162,7 @@ typedef uint uint32_t;
 typedef ulong uint64_t;
 
 typedef int int32_t;
+typedef long int64_t;
 
 double getSmallPositiveFloatBits(uint64_t entropy)
 {
@@ -206,7 +229,7 @@ uint64_t imul_rcp_value(uint32_t divisor)
 uint32_t get_byte(uint64_t a, uint32_t position) { return (a >> (position << 3)) & 0xFF; }
 #define update_max(value, next_value) do { if ((value) < (next_value)) (value) = (next_value); } while (0)
 
-__attribute__((reqd_work_group_size(64, 1, 1)))
+__attribute__((reqd_work_group_size(32, 1, 1)))
 __kernel void init_vm(__global const void* entropy_data, __global void* vm_states)
 {
 #if RANDOMX_PROGRAM_SIZE <= 256
@@ -215,7 +238,7 @@ __kernel void init_vm(__global const void* entropy_data, __global void* vm_state
 	typedef uint16_t exec_t;
 #endif
 
-	__local uint32_t execution_plan_buf[RANDOMX_PROGRAM_SIZE * WORKERS_PER_HASH * (64 / 8) * sizeof(exec_t) / sizeof(uint32_t)];
+	__local uint32_t execution_plan_buf[RANDOMX_PROGRAM_SIZE * WORKERS_PER_HASH * (32 / 8) * sizeof(exec_t) / sizeof(uint32_t)];
 
 	set_buffer(execution_plan_buf, sizeof(execution_plan_buf) / sizeof(uint32_t), 0);
 	barrier(CLK_LOCAL_MEM_FENCE);
@@ -1426,5 +1449,427 @@ __kernel void init_vm(__global const void* entropy_data, __global void* vm_state
 		}
 
 		((__global uint32_t*)(R + 20))[0] = (uint32_t)(compiled_program - (__global uint32_t*)(R + (REGISTERS_SIZE + IMM_BUF_SIZE) / sizeof(uint64_t)));
+	}
+}
+
+void load_buffer(__local uint64_t *dst_buf, size_t N, __global const void* src_buf)
+{
+	uint32_t i = get_local_id(0) * sizeof(uint64_t);
+	const uint32_t step = get_local_size(0) * sizeof(uint64_t);
+	__global const uint8_t* src = ((__global const uint8_t*)src_buf) + get_group_id(0) * sizeof(uint64_t) * N + i;
+	__local uint8_t* dst = ((__local uint8_t*)dst_buf) + i;
+	while (i < sizeof(uint64_t) * N)
+	{
+		*(__local uint64_t*)(dst) = *(__global uint64_t*)(src);
+		src += step;
+		dst += step;
+		i += step;
+	}
+}
+
+double load_F_E_groups(int value, uint64_t andMask, uint64_t orMask)
+{
+	double t = convert_double_rtn(value);
+	uint64_t x = as_ulong(t);
+	x &= andMask;
+	x |= orMask;
+	return as_double(x);
+}
+
+uint32_t inner_loop(
+	const uint32_t program_length,
+	__local const uint32_t* compiled_program,
+	const int32_t sub,
+	__global uint8_t* scratchpad,
+	const uint32_t fp_reg_offset,
+	const uint32_t fp_reg_group_A_offset,
+	__local uint64_t* R,
+	__local uint32_t* imm_buf,
+	const uint32_t batch_size,
+	uint32_t fprc,
+	const uint32_t fp_workers_mask,
+	const uint64_t xexponentMask,
+	const uint32_t workers_mask
+)
+{
+	const int32_t sub2 = sub >> 1;
+	imm_buf[IMM_INDEX_COUNT + 1] = fprc;
+
+	#pragma unroll(1)
+	for (int32_t ip = 0; ip < program_length;)
+	{
+		imm_buf[IMM_INDEX_COUNT] = ip;
+
+		uint32_t inst = compiled_program[ip];
+		const int32_t num_workers = (inst >> NUM_INSTS_OFFSET) & (WORKERS_PER_HASH - 1);
+		const int32_t num_fp_insts = (inst >> NUM_FP_INSTS_OFFSET) & (WORKERS_PER_HASH - 1);
+		const int32_t num_insts = num_workers - num_fp_insts;
+
+		if (sub <= num_workers)
+		{
+			const int32_t inst_offset = sub - num_fp_insts;
+			const bool is_fp = inst_offset < num_fp_insts;
+			inst = compiled_program[ip + (is_fp ? sub2 : inst_offset)];
+			//if ((idx == 0) && (ic == 0))
+			//{
+			//	printf("num_fp_insts = %u, sub = %u, ip = %u, inst = %08x\n", num_fp_insts, sub, ip + ((sub < num_fp_insts * 2) ? (sub / 2) : (sub - num_fp_insts)), inst);
+			//}
+
+			//asm("// INSTRUCTION DECODING BEGIN");
+
+			uint32_t opcode = (inst >> OPCODE_OFFSET) & 15;
+			const uint32_t location = (inst >> LOC_OFFSET) & 1;
+
+			const uint32_t reg_size_shift = is_fp ? 4 : 3;
+			const uint32_t reg_base_offset = is_fp ? fp_reg_offset : 0;
+			const uint32_t reg_base_src_offset = is_fp ? fp_reg_group_A_offset : 0;
+
+			uint32_t dst_offset = (inst >> DST_OFFSET) & 7;
+			dst_offset = reg_base_offset + (dst_offset << reg_size_shift);
+
+			uint32_t src_offset = (inst >> SRC_OFFSET) & 7;
+			src_offset = (src_offset << 3) + (location ? 0 : reg_base_src_offset);
+
+			__local uint64_t* dst_ptr = (__local uint64_t*)((__local uint8_t*)(R) + dst_offset);
+			__local uint64_t* src_ptr = (__local uint64_t*)((__local uint8_t*)(R) + src_offset);
+
+			const uint32_t imm_offset = (inst >> IMM_OFFSET) & 255;
+			__local const uint32_t* imm_ptr = imm_buf + imm_offset;
+
+			uint64_t dst = *dst_ptr;
+			uint64_t src = *src_ptr;
+			uint2 imm;
+			imm.x = imm_ptr[0];
+			imm.y = imm_ptr[1];
+
+			//asm("// INSTRUCTION DECODING END");
+
+			if (location)
+			{
+				//asm("// SCRATCHPAD ACCESS BEGIN");
+
+				const uint32_t loc_shift = (imm.x >> 21) & 31;
+				const uint32_t mask = (0xFFFFFFFFU >> loc_shift) - 7;
+
+				const bool is_read = (opcode != 10);
+				uint32_t addr = is_read ? ((loc_shift == LOC_L3) ? 0 : (uint32_t)(src)) : (uint32_t)(dst);
+				addr += (int32_t)(imm.x);
+				addr &= mask;
+
+				__global uint64_t* ptr = (__global uint64_t*)(scratchpad + addr);
+
+				if (is_read)
+				{
+					src = *ptr;
+				}
+				else
+				{
+					*ptr = src;
+					goto execution_end;
+				}
+
+				//asm("// SCRATCHPAD ACCESS END");
+			}
+
+			{
+				//asm("// EXECUTION BEGIN");
+
+				if (inst & (1 << SRC_IS_IMM32_OFFSET)) src = (uint64_t)((int64_t)((int32_t)(imm.x)));
+
+				// Check instruction opcodes (most frequent instructions come first)
+				if (opcode <= 3)
+				{
+					//asm("// IADD_RS, IADD_M, ISUB_R, ISUB_M, IMUL_R, IMUL_M, IMUL_RCP, IXOR_R, IXOR_M, FSCAL_R (109/256) ------>");
+					if (inst & (1 << NEGATIVE_SRC_OFFSET)) src = (uint64_t)(-(int64_t)(src));
+					if (opcode == 0) dst += (int32_t)(imm.x);
+					const uint32_t shift = (inst >> SHIFT_OFFSET) & 3;
+					if (opcode < 2) dst += src << shift;
+					const uint64_t imm64 = *((uint64_t*) &imm);
+					if (inst & (1 << SRC_IS_IMM64_OFFSET)) src = imm64;
+					if (opcode == 2) dst *= src;
+					if (opcode == 3) dst ^= src;
+					//asm("// <------ IADD_RS, IADD_M, ISUB_R, ISUB_M, IMUL_R, IMUL_M, IMUL_RCP, IXOR_R, IXOR_M, FSCAL_R (109/256)");
+				}
+				else if (opcode == 12)
+				{
+					//asm("// FADD_R, FADD_M, FSUB_R, FSUB_M, FMUL_R (74/256) ------>");
+
+					if (location) src = as_ulong(convert_double_rtn((int32_t)(src >> ((sub & 1) * 32))));
+					if (inst & (1 << NEGATIVE_SRC_OFFSET)) src ^= 0x8000000000000000UL;
+
+					const bool is_mul = (inst & (1 << SHIFT_OFFSET)) != 0;
+					const double a = as_double(dst);
+					const double b = as_double(src);
+
+					dst = as_ulong(fma(a, is_mul ? b : 1.0, is_mul ? 0.0 : b));
+
+					//asm("// <------ FADD_R, FADD_M, FSUB_R, FSUB_M, FMUL_R (74/256)");
+				}
+				else if (opcode == 9)
+				{
+					//asm("// CBRANCH (16/256) ------>");
+					dst += (int32_t)(imm.x);
+					if (((uint32_t)(dst) & (ConditionMask << (imm.y & 31))) == 0)
+					{
+						imm_buf[IMM_INDEX_COUNT] = (uint32_t)(((int32_t)(imm.y) >> 5) - num_insts);
+					}
+					//asm("// <------ CBRANCH (16/256)");
+				}
+				else if (opcode == 7)
+				{
+					//asm("// IROR_R, IROL_R (10/256) ------>");
+					uint32_t shift1 = src & 63;
+#if RANDOMX_FREQ_IROL_R > 0
+					const uint32_t shift2 = 64 - shift1;
+					const bool is_rol = (inst & (1 << NEGATIVE_SRC_OFFSET));
+					dst = (dst >> (is_rol ? shift2 : shift1)) | (dst << (is_rol ? shift1 : shift2));
+#else
+					dst = (dst >> shift1) | (dst << (64 - shift1));
+#endif
+					//asm("// <------ IROR_R, IROL_R (10/256)");
+				}
+				else if (opcode == 14)
+				{
+					//asm("// FSQRT_R (6/256) ------>");
+					dst = as_ulong(sqrt(as_double(dst)));
+					//asm("// <------ FSQRT_R (6/256)");
+				}
+				else if (opcode == 6)
+				{
+					//asm("// IMULH_R, IMULH_M (5/256) ------>");
+					dst = mul_hi(dst, src);
+					//asm("// <------ IMULH_R, IMULH_M (5/256)");
+				}
+				else if (opcode == 4)
+				{
+					//asm("// ISMULH_R, ISMULH_M (5/256) ------>");
+					dst = (uint64_t)(mul_hi((int64_t)(dst), (int64_t)(src)));
+					//asm("// <------ ISMULH_R, ISMULH_M (5/256)");
+				}
+				else if (opcode == 11)
+				{
+					//asm("// FSWAP_R (4/256) ------>");
+					dst = *(__local uint64_t*)((__local uint8_t*)(R) + (dst_offset ^ 8));
+					//asm("// <------ FSWAP_R (4/256)");
+				}
+				else if (opcode == 8)
+				{
+					//asm("// ISWAP_R (4/256) ------>");
+					*src_ptr = dst;
+					dst = src;
+					//asm("// <------ ISWAP_R (4/256)");
+				}
+				else if (opcode == 15)
+				{
+					//asm("// FDIV_M (4/256) ------>");
+					src = as_ulong(convert_double_rtn((int32_t)(src >> ((sub & 1) * 32))));
+					src &= dynamicMantissaMask;
+					src |= xexponentMask;
+					dst = as_ulong(as_double(dst) / as_double(src));
+					//asm("// <------ FDIV_M (4/256)");
+				}
+				else if (opcode == 5)
+				{
+					//asm("// INEG_R (2/256) ------>");
+					dst = (uint64_t)(-(int64_t)(dst));
+					//asm("// <------ INEG_R (2/256)");
+				}
+				// CFROUND check will be skipped and removed entirely by the compiler if ROUNDING_MODE >= 0
+				else if (ROUNDING_MODE < 0)
+				{
+					//asm("// CFROUND (1/256) ------>");
+					imm_buf[IMM_INDEX_COUNT + 1] = ((src >> imm_offset) | (src << (64 - imm_offset))) & 3;
+					//asm("// <------ CFROUND (1/256)");
+					goto execution_end;
+				}
+
+				*dst_ptr = dst;
+				//asm("// EXECUTION END");
+			}
+		}
+
+		execution_end:
+		{
+			//asm("// SYNCHRONIZATION OF INSTRUCTION POINTER AND ROUNDING MODE BEGIN");
+
+			barrier(CLK_LOCAL_MEM_FENCE);
+			ip = imm_buf[IMM_INDEX_COUNT];
+			fprc = imm_buf[IMM_INDEX_COUNT + 1];
+
+			//asm("// SYNCHRONIZATION OF INSTRUCTION POINTER AND ROUNDING MODE END");
+
+			ip += num_insts + 1;
+		}
+	}
+
+	return fprc;
+}
+
+#if WORKERS_PER_HASH == 16
+__attribute__((reqd_work_group_size(32, 1, 1)))
+#else
+__attribute__((reqd_work_group_size(16, 1, 1)))
+#endif
+__kernel void execute_vm(__global void* vm_states, __global void* rounding, __global void* scratchpads, __global const void* dataset_ptr, uint32_t batch_size, uint32_t num_iterations, uint32_t first, uint32_t last)
+{
+	// 2 hashes per warp, 4 KB shared memory for VM states
+	__local uint64_t vm_states_local[(VM_STATE_SIZE * 2) / sizeof(uint64_t)];
+
+	load_buffer(vm_states_local, sizeof(vm_states_local) / sizeof(uint64_t), vm_states);
+
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	enum { IDX_WIDTH = (WORKERS_PER_HASH == 16) ? 16 : 8 };
+
+	__local uint64_t* R = vm_states_local + (get_local_id(0) / IDX_WIDTH) * VM_STATE_SIZE / sizeof(uint64_t);
+	__local double* F = (__local double*)(R + 8);
+	__local double* E = (__local double*)(R + 16);
+
+	const uint32_t global_index = get_global_id(0);
+	const int32_t idx = global_index / IDX_WIDTH;
+	const int32_t sub = global_index % IDX_WIDTH;
+
+	uint32_t ma = ((__local uint32_t*)(R + 16))[0];
+	uint32_t mx = ((__local uint32_t*)(R + 16))[1];
+
+	const uint32_t addressRegisters = ((__local uint32_t*)(R + 16))[2];
+	__local const uint64_t* readReg0 = (__local uint64_t*)(((__local uint8_t*)R) + (addressRegisters & 0xff));
+	__local const uint64_t* readReg1 = (__local uint64_t*)(((__local uint8_t*)R) + ((addressRegisters >> 8) & 0xff));
+	__local const uint32_t* readReg2 = (__local uint32_t*)(((__local uint8_t*)R) + ((addressRegisters >> 16) & 0xff));
+	__local const uint32_t* readReg3 = (__local uint32_t*)(((__local uint8_t*)R) + (addressRegisters >> 24));
+
+	const uint32_t datasetOffset = ((__local uint32_t*)(R + 16))[3];
+	__global const uint8_t* dataset = ((__global const uint8_t*)dataset_ptr) + datasetOffset;
+
+	const uint32_t fp_reg_offset = 64 + ((global_index & 1) << 3);
+	const uint32_t fp_reg_group_A_offset = 192 + ((global_index & 1) << 3);
+
+	__local uint64_t* eMask = R + 18;
+
+	const uint32_t program_length = ((__local uint32_t*)(R + 20))[0];
+	uint32_t fprc = ((__global uint32_t*)rounding)[idx];
+
+	uint32_t spAddr0 = first ? mx : 0;
+	uint32_t spAddr1 = first ? ma : 0;
+
+	__global uint8_t* scratchpad = ((__global uint8_t*)scratchpads) + idx * (uint64_t)(RANDOMX_SCRATCHPAD_L3 + 64);
+
+	const bool f_group = (sub < 4);
+
+	__local double* fe = f_group ? (F + sub * 2) : (E + (sub - 4) * 2);
+	__local double* f = F + sub;
+	__local double* e = E + sub;
+
+	const uint64_t andMask = f_group ? (uint64_t)(-1) : dynamicMantissaMask;
+	const uint64_t orMask1 = f_group ? 0 : eMask[0];
+	const uint64_t orMask2 = f_group ? 0 : eMask[1];
+	const uint64_t xexponentMask = (sub & 1) ? eMask[1] : eMask[0];
+
+	__local uint32_t* imm_buf = (__local uint32_t*)(R + REGISTERS_SIZE / sizeof(uint64_t));
+	__local const uint32_t* compiled_program = (__local const uint32_t*)(R + (REGISTERS_SIZE + IMM_BUF_SIZE) / sizeof(uint64_t));
+
+	const uint32_t workers_mask = ((1 << WORKERS_PER_HASH) - 1) << ((get_local_id(0) / IDX_WIDTH) * IDX_WIDTH);
+	const uint32_t fp_workers_mask = 3 << (((sub >> 1) << 1) + (get_local_id(0) / IDX_WIDTH) * IDX_WIDTH);
+
+	#pragma unroll(1)
+	for (int ic = 0; ic < num_iterations; ++ic)
+	{
+		__local uint64_t *r;
+		__global uint64_t *p0, *p1;
+		if ((WORKERS_PER_HASH <= 8) || (sub < 8))
+		{
+			const uint64_t spMix = *readReg0 ^ *readReg1;
+			spAddr0 ^= ((const uint32_t*)&spMix)[0];
+			spAddr1 ^= ((const uint32_t*)&spMix)[1];
+			spAddr0 &= ScratchpadL3Mask64;
+			spAddr1 &= ScratchpadL3Mask64;
+
+			p0 = (__global uint64_t*)(scratchpad + spAddr0 + sub * 8);
+			p1 = (__global uint64_t*)(scratchpad + spAddr1 + sub * 8);
+
+			r = R + sub;
+			*r ^= *p0;
+
+			uint64_t global_mem_data = *p1;
+			int32_t* q = (int32_t*)&global_mem_data;
+
+			fe[0] = load_F_E_groups(q[0], andMask, orMask1);
+			fe[1] = load_F_E_groups(q[1], andMask, orMask2);
+		}
+
+		//if ((global_index == 0) && (ic == 0))
+		//{
+		//	printf("ic = %d (before)\n", ic);
+		//	for (int i = 0; i < 8; ++i)
+		//		printf("f%d = %016llx\n", i, bit_cast<uint64_t>(F[i]));
+		//	for (int i = 0; i < 8; ++i)
+		//		printf("e%d = %016llx\n", i, bit_cast<uint64_t>(E[i]));
+		//	printf("\n");
+		//}
+
+		if ((WORKERS_PER_HASH == IDX_WIDTH) || (sub < WORKERS_PER_HASH))
+			fprc = inner_loop(program_length, compiled_program, sub, scratchpad, fp_reg_offset, fp_reg_group_A_offset, R, imm_buf, batch_size, fprc, fp_workers_mask, xexponentMask, workers_mask);
+
+		//if ((global_index == 0) && (ic == RANDOMX_PROGRAM_ITERATIONS - 1))
+		//{
+		//	printf("ic = %d (after)\n", ic);
+		//	for (int i = 0; i < 8; ++i)
+		//		printf("r%d = %016llx\n", i, R[i]);
+		//	for (int i = 0; i < 8; ++i)
+		//		printf("f%d = %016llx\n", i, bit_cast<uint64_t>(F[i]));
+		//	for (int i = 0; i < 8; ++i)
+		//		printf("e%d = %016llx\n", i, bit_cast<uint64_t>(E[i]));
+		//	printf("\n");
+		//}
+
+		if ((WORKERS_PER_HASH <= 8) || (sub < 8))
+		{
+			mx ^= *readReg2 ^ *readReg3;
+			mx &= CacheLineAlignMask;
+
+			const uint64_t next_r = *r ^ *(__global const uint64_t*)(dataset + ma + sub * 8);
+			*r = next_r;
+
+			*p1 = next_r;
+			*p0 = as_ulong(f[0]) ^ as_ulong(e[0]);
+
+			uint32_t tmp = ma;
+			ma = mx;
+			mx = tmp;
+
+			spAddr0 = 0;
+			spAddr1 = 0;
+		}
+	}
+
+	//if (global_index == 0)
+	//{
+	//	for (int i = 0; i < 8; ++i)
+	//		printf("r%d = %016llx\n", i, R[i]);
+	//	for (int i = 0; i < 8; ++i)
+	//		printf("fe%d = %016llx\n", i, bit_cast<uint64_t>(F[i]) ^ bit_cast<uint64_t>(E[i]));
+	//	printf("\n");
+	//}
+
+	if ((WORKERS_PER_HASH > 8) && (sub >= 8))
+		return;
+
+	__global uint64_t* p = ((__global uint64_t*)vm_states) + idx * (VM_STATE_SIZE / sizeof(uint64_t));
+	p[sub] = R[sub];
+
+	if (sub == 0)
+	{
+		((__global uint32_t*)rounding)[idx] = fprc;
+	}
+
+	if (last)
+	{
+		p[sub + 8] = as_ulong(F[sub]) ^ as_ulong(E[sub]);
+		p[sub + 16] = as_ulong(E[sub]);
+	}
+	else if (sub == 0)
+	{
+		((__global uint32_t*)(p + 16))[0] = ma;
+		((__global uint32_t*)(p + 16))[1] = mx;
 	}
 }

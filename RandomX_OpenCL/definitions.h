@@ -42,6 +42,7 @@ static const std::string CL_RANDOMX_RUN = "randomx_run";
 
 static const std::string RANDOMX_VM_CL = "CL/randomx_vm.cl";
 static const std::string CL_INIT_VM = "init_vm";
+static const std::string CL_EXECUTE_VM = "execute_vm";
 
 static uint8_t blockTemplate[] = {
 		0x07, 0x07, 0xf7, 0xa4, 0xf0, 0xd6, 0x05, 0xb3, 0x03, 0x26, 0x08, 0x16, 0xba, 0x3f, 0x10, 0x90, 0x2e, 0x1a, 0x14,

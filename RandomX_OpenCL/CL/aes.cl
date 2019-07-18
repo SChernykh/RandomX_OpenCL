@@ -580,11 +580,9 @@ uint get_byte(uint a, uint start_bit) { return (a >> start_bit) & 0xFF; }
 #undef fillAes_name
 
 #define inputSize 2097152
-#define hashOffsetBytes 192
-#define hashStrideBytes 256
 
 __attribute__((reqd_work_group_size(64, 1, 1)))
-__kernel void hashAes1Rx4(__global const void* input, __global void* hash, uint batch_size)
+__kernel void hashAes1Rx4(__global const void* input, __global void* hash, uint hashOffsetBytes, uint hashStrideBytes, uint batch_size)
 {
 	__local uint T[2048];
 
