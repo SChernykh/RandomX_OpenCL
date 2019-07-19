@@ -121,7 +121,7 @@
     </CustomBuild>
     <CustomBuild Include="CL\randomx_vm.cl">
       <FileType>Document</FileType>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\Temp\clcc.exe %(Identity) --options "-D WORKERS_PER_HASH=8 -cl-std=CL1.1 -Werror"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\Temp\clcc.exe %(Identity) --options "-D WORKERS_PER_HASH=8 -cl-std=CL1.2 -Werror"</Command>
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(Identity).bin</Outputs>
     </CustomBuild>
   </ItemGroup>

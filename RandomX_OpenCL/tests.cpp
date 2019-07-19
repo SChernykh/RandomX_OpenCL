@@ -70,7 +70,7 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 		return false;
 	}
 
-	if (!ctx.Compile("randomx_vm.bin", { RANDOMX_VM_CL }, { CL_INIT_VM, CL_EXECUTE_VM }, "-D WORKERS_PER_HASH=8 -cl-std=CL1.1 -Werror", ALWAYS_COMPILE))
+	if (!ctx.Compile("randomx_vm.bin", { RANDOMX_VM_CL }, { CL_INIT_VM, CL_EXECUTE_VM }, "-D WORKERS_PER_HASH=8 -cl-std=CL1.2 -Werror", ALWAYS_COMPILE))
 	{
 		return false;
 	}

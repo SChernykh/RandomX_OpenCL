@@ -1476,6 +1476,76 @@ double load_F_E_groups(int value, uint64_t andMask, uint64_t orMask)
 	return as_double(x);
 }
 
+double div_rnd(double a, double b, uint32_t fprc)
+{
+	// Initial approximation
+	double y0;
+#ifdef __NV_CL_C_VERSION
+	asm("rcp.approx.ftz.f64 %0, %1;" : "=d"(y0) : "d"(b));
+#else
+	y0 = native_recip(b);
+#endif
+
+	// Improve initial approximation (can be skipped)
+	// 1 of 2^31 quotients will be incorrect in the last bit without it (1 incorrect hash per ~32768 hashes)
+	//y0 = fma(y0, fma(-b, y0, 1.0), y0);
+
+	// First Newton-Raphson iteration
+	const double y1 = fma(y0, fma(-b, y0, 1.0), y0);
+	const double t0 = a * y1;
+	const double t1 = fma(-b, t0, a);
+
+	// Second Newton-Raphson iteration
+	// TODO: use correct rounding mode here
+	double result = fma(y1, t1, t0);
+
+	// Check for infinity/NaN
+	const uint64_t inf = 2047UL << 52;
+	const uint64_t inf_rnd = inf - (fprc & 1);
+
+	if (((as_ulong(result) >> 52) & 2047) == 2047) result = as_double(inf_rnd);
+	if (as_ulong(a) == inf) result = a;
+
+	// Check for exact equality
+	if (a == b) result = 1.0;
+
+	return result;
+}
+
+double sqrt_rnd(double x, uint32_t fprc)
+{
+	// Initial approximation
+	double y0, t0, t1;
+#ifdef __NV_CL_C_VERSION
+	asm("rsqrt.approx.ftz.f64 %0, %1;" : "=d"(y0) : "d"(x));
+#else
+	y0 = native_rsqrt(x);
+#endif
+
+	// Improve initial approximation (can be skipped)
+	// 1 of 2^28 square roots will be incorrect in the last bit without it (1 incorrect hash per ~2731 hashes)
+	//y0 = fma(y0, fma(y0 * -0.5, y0 * x, 0.5), y0);
+
+	// First Newton-Raphson iteration
+	t0 = y0 * x;
+	t1 = y0 * -0.5;
+	t1 = fma(t1, t0, 0.5);					// 0.5 * (1.0 - y0 * y0 * x)
+	const double y1_x = fma(t0, t1, t0);	// y1 * x = 0.5 * y0 * x * (3.0 - y0 * y0 * x)
+
+	// Second Newton-Raphson iteration
+	y0 *= 0.5;
+	y0 = fma(y0, t1, y0);					// 0.5 * y1
+	t1 = fma(-y1_x, y1_x, x);				// x * (1.0 - x * y1 * y1)
+
+	// TODO: use correct rounding mode here
+	double result = fma(t1, y0, y1_x);		// x * 0.5 * y1 * (3.0 - x * y1 * y1)
+
+	// Check for infinity
+	if (*((uint64_t*) &x) == (2047UL << 52)) result = x;
+
+	return result;
+}
+
 uint32_t inner_loop(
 	const uint32_t program_length,
 	__local const uint32_t* compiled_program,
@@ -1601,6 +1671,7 @@ uint32_t inner_loop(
 					const double a = as_double(dst);
 					const double b = as_double(src);
 
+					// TODO: use correct rounding mode here
 					dst = as_ulong(fma(a, is_mul ? b : 1.0, is_mul ? 0.0 : b));
 
 					//asm("// <------ FADD_R, FADD_M, FSUB_R, FSUB_M, FMUL_R (74/256)");
@@ -1631,7 +1702,7 @@ uint32_t inner_loop(
 				else if (opcode == 14)
 				{
 					//asm("// FSQRT_R (6/256) ------>");
-					dst = as_ulong(sqrt(as_double(dst)));
+					dst = as_ulong(sqrt_rnd(as_double(dst), fprc));
 					//asm("// <------ FSQRT_R (6/256)");
 				}
 				else if (opcode == 6)
@@ -1665,7 +1736,7 @@ uint32_t inner_loop(
 					src = as_ulong(convert_double_rtn((int32_t)(src >> ((sub & 1) * 32))));
 					src &= dynamicMantissaMask;
 					src |= xexponentMask;
-					dst = as_ulong(as_double(dst) / as_double(src));
+					dst = as_ulong(div_rnd(as_double(dst), as_double(src), fprc));
 					//asm("// <------ FDIV_M (4/256)");
 				}
 				else if (opcode == 5)
