@@ -63,6 +63,19 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 
 	if (portable)
 	{
+		switch (workers_per_hash)
+		{
+		case 2:
+		case 4:
+		case 8:
+		case 16:
+			break;
+
+		default:
+			workers_per_hash = 8;
+			break;
+		}
+
 		std::stringstream options;
 		options << "-D WORKERS_PER_HASH=" << workers_per_hash << " -cl-std=CL1.2 -Werror";
 		if (!ctx.Compile("randomx_vm.bin", { RANDOMX_VM_CL }, { CL_INIT_VM, CL_EXECUTE_VM }, options.str(), ALWAYS_COMPILE))
