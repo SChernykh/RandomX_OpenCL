@@ -77,7 +77,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 		}
 
 		std::stringstream options;
-		options << "-D WORKERS_PER_HASH=" << workers_per_hash << (high_precision ? " -D HIGH_PRECISION" : "") << " -cl-std=CL1.2 -Werror";
+		options << "-D WORKERS_PER_HASH=" << workers_per_hash << (high_precision ? " -D HIGH_PRECISION" : "") << " -cl-std=CL1.1 -Werror";
 		if (!ctx.Compile("randomx_vm.bin", { RANDOMX_VM_CL }, { CL_INIT_VM, CL_EXECUTE_VM }, options.str(), ALWAYS_COMPILE))
 		{
 			return false;
