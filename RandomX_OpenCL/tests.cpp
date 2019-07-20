@@ -139,6 +139,9 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 		return false;
 	}
 
+	global_work_size = intensity;
+	local_work_size = 64;
+
 	CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel, 1, nullptr, &global_work_size, &local_work_size, 0, nullptr, nullptr);
 	CL_CHECKED_CALL(clFinish, ctx.queue);
 
@@ -235,7 +238,7 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 	std::cout << "fillAes4Rx4_entropy test passed" << std::endl;
 
 	kernel = ctx.kernels[CL_HASHAES1RX4];
-	if (!clSetKernelArgs(kernel, scratchpads_gpu, registers_gpu, static_cast<uint32_t>(intensity)))
+	if (!clSetKernelArgs(kernel, scratchpads_gpu, registers_gpu, 192, REGISTERS_SIZE, static_cast<uint32_t>(intensity)))
 	{
 		return false;
 	}
@@ -268,7 +271,7 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 	std::cout << "hashAes1Rx4 test passed" << std::endl;
 
 	kernel = ctx.kernels[CL_BLAKE2B_HASH_REGISTERS_32];
-	if (!clSetKernelArgs(kernel, hash_gpu, registers_gpu))
+	if (!clSetKernelArgs(kernel, hash_gpu, registers_gpu, REGISTERS_SIZE))
 	{
 		return false;
 	}
@@ -294,7 +297,7 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 	std::cout << "blake2b_hash_registers (32 byte hash) test passed" << std::endl;
 
 	kernel = ctx.kernels[CL_BLAKE2B_HASH_REGISTERS_64];
-	if (!clSetKernelArgs(kernel, hash_gpu, registers_gpu))
+	if (!clSetKernelArgs(kernel, hash_gpu, registers_gpu, REGISTERS_SIZE))
 	{
 		return false;
 	}
