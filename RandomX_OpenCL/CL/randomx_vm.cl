@@ -1493,7 +1493,7 @@ double fma_soft(double a, double b, double c, uint32_t rounding_mode)
 		if (c == -a)
 		{
 			const uint64_t minus_zero = 1UL << 63;
-			return (rounding_mode == 1) ? *((double*)&minus_zero) : 0.0;
+			return (rounding_mode == 1) ? as_double(minus_zero) : 0.0;
 		}
 	}
 
@@ -1668,8 +1668,7 @@ double fma_soft(double a, double b, double c, uint32_t rounding_mode)
 	fma_result[1] |= (uint64_t)(exponent_fma_result + exp_correction) << mantissa_size;
 	fma_result[1] |= (uint64_t)(sign_fma_result) << 63;
 
-	const double result = *(double*)(fma_result + 1);
-	return result;
+	return as_double(fma_result[1]);
 }
 
 double div_rnd(double a, double b, uint32_t fprc)
