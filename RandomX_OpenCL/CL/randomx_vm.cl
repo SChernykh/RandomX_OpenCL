@@ -1514,9 +1514,9 @@ double fma_soft(double a, double b, double c, uint32_t rounding_mode)
 	const uint64_t mantissa_b = (*((uint64_t*)&b) & mantissa_mask) | mantissa_high_bit;
 	const uint64_t mantissa_c = (*((uint64_t*)&c) & mantissa_mask) | mantissa_high_bit;
 
-	const uint64_t exponent_a = (*((uint64_t*)&a) >> mantissa_size) & exponent_mask;
-	const uint64_t exponent_b = (*((uint64_t*)&b) >> mantissa_size) & exponent_mask;
-	const uint64_t exponent_c = (*((uint64_t*)&c) >> mantissa_size) & exponent_mask;
+	const uint32_t exponent_a = (*((uint64_t*)&a) >> mantissa_size) & exponent_mask;
+	const uint32_t exponent_b = (*((uint64_t*)&b) >> mantissa_size) & exponent_mask;
+	const uint32_t exponent_c = (*((uint64_t*)&c) >> mantissa_size) & exponent_mask;
 
 	const uint32_t sign_a = *((uint64_t*)&a) >> 63;
 	const uint32_t sign_b = *((uint64_t*)&b) >> 63;
@@ -1527,7 +1527,7 @@ double fma_soft(double a, double b, double c, uint32_t rounding_mode)
 	mul_result[1] = mul_hi(mantissa_a, mantissa_b);
 
 	uint32_t exp_correction = mul_result[1] >> 41;
-	uint64_t exponent_mul_result = exponent_a + exponent_b + exp_correction - 1023;
+	uint32_t exponent_mul_result = exponent_a + exponent_b + exp_correction - 1023;
 	uint32_t sign_mul_result = sign_a ^ sign_b;
 
 	if (exponent_mul_result >= 2047)
@@ -1535,7 +1535,7 @@ double fma_soft(double a, double b, double c, uint32_t rounding_mode)
 
 	uint64_t fma_result[2];
 	uint64_t t[2];
-	uint64_t exponent_fma_result;
+	uint32_t exponent_fma_result;
 
 	if (exponent_mul_result >= exponent_c)
 	{
@@ -1649,7 +1649,7 @@ double fma_soft(double a, double b, double c, uint32_t rounding_mode)
 	}
 
 	const uint32_t shift = 11 + exp_correction;
-	const uint64_t round_up = (fma_result[0] || (fma_result[1] & ((1 << shift) - 1))) ? 1 : 0;
+	const uint32_t round_up = (fma_result[0] || (fma_result[1] & ((1 << shift) - 1))) ? 1 : 0;
 
 	fma_result[1] >>= shift;
 	fma_result[1] &= mantissa_mask;
@@ -1662,7 +1662,7 @@ double fma_soft(double a, double b, double c, uint32_t rounding_mode)
 			++exponent_fma_result;
 		}
 	}
-	fma_result[1] |= (exponent_fma_result + exp_correction) << mantissa_size;
+	fma_result[1] |= (uint64_t)(exponent_fma_result + exp_correction) << mantissa_size;
 	fma_result[1] |= (uint64_t)(sign_fma_result) << 63;
 
 	const double result = *(double*)(fma_result + 1);

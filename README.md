@@ -9,7 +9,7 @@ GPUs tested so far:
 Model|CryptonightR H/S|RandomX H/S|Relative speed|Comment
 -----|---------------|-----------|---------------|-------
 AMD Vega 64 (1700/1100 MHz)|2200|1188|54%|JIT compiled mode
-GeForce GTX 1080 Ti (2037/11800 MHz)|927|539|58.1%|VM interpreted mode
+GeForce GTX 1080 Ti (2037/11800 MHz)|927|629|67.8%|VM interpreted mode
 
 ## Building on Windows
 
