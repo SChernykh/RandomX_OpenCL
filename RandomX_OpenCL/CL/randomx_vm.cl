@@ -1640,10 +1640,9 @@ double fma_soft(double a, double b, double c, uint32_t rounding_mode)
 			fma_result[0] = 0;
 		}
 
-		uint32_t index = 63 - clz(fma_result[1]);
-		if (index < 63)
+		const uint32_t index = clz(fma_result[1]);
+		if (index)
 		{
-			index = 63 - index;
 			exponent_fma_result -= index;
 			fma_result[1] = (fma_result[1] << index) | (fma_result[0] >> (64 - index));
 		}
