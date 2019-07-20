@@ -73,13 +73,13 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 
 //Control instructions
 #define RANDOMX_FREQ_CBRANCH       16
-#define RANDOMX_FREQ_CFROUND        0
+#define RANDOMX_FREQ_CFROUND        1
 
 //Store instruction
 #define RANDOMX_FREQ_ISTORE        16
 
 //No-op instruction
-#define RANDOMX_FREQ_NOP            1
+#define RANDOMX_FREQ_NOP            0
 
 #define RANDOMX_DATASET_ITEM_SIZE 64
 
@@ -1476,6 +1476,199 @@ double load_F_E_groups(int value, uint64_t andMask, uint64_t orMask)
 	return as_double(x);
 }
 
+// You're one ugly motherfucker!
+double fma_soft(double a, double b, double c, uint32_t rounding_mode)
+{
+	if (rounding_mode == 0)
+		return fma(a, b, c);
+
+	if ((a == 0.0) || (b == 0.0))
+		return c;
+
+	if (b == 1.0)
+	{
+		if (c == 0.0)
+			return a;
+
+		if (c == -a)
+		{
+			const uint64_t minus_zero = 1UL << 63;
+			return (rounding_mode == 1) ? *((double*)&minus_zero) : 0.0;
+		}
+	}
+
+	const uint64_t inf = 2047UL << 52;
+	const uint64_t inf_rnd = inf - (rounding_mode & 1);
+
+	if ((((*((uint64_t*)&a) >> 52) & 2047) == 2047) || (((*((uint64_t*)&b) >> 52) & 2047) == 2047) || (((*((uint64_t*)&c) >> 52) & 2047) == 2047))
+		return *((double*)&inf);
+
+	const uint64_t mantissa_size = 52;
+	const uint64_t mantissa_mask = (1UL << mantissa_size) - 1;
+	const uint64_t mantissa_high_bit = 1UL << mantissa_size;
+
+	const uint64_t exponent_size = 11;
+	const uint64_t exponent_mask = (1 << exponent_size) - 1;
+
+	const uint64_t mantissa_a = (*((uint64_t*)&a) & mantissa_mask) | mantissa_high_bit;
+	const uint64_t mantissa_b = (*((uint64_t*)&b) & mantissa_mask) | mantissa_high_bit;
+	const uint64_t mantissa_c = (*((uint64_t*)&c) & mantissa_mask) | mantissa_high_bit;
+
+	const uint64_t exponent_a = (*((uint64_t*)&a) >> mantissa_size) & exponent_mask;
+	const uint64_t exponent_b = (*((uint64_t*)&b) >> mantissa_size) & exponent_mask;
+	const uint64_t exponent_c = (*((uint64_t*)&c) >> mantissa_size) & exponent_mask;
+
+	const uint32_t sign_a = *((uint64_t*)&a) >> 63;
+	const uint32_t sign_b = *((uint64_t*)&b) >> 63;
+	const uint32_t sign_c = *((uint64_t*)&c) >> 63;
+
+	uint64_t mul_result[2];
+	mul_result[0] = mantissa_a * mantissa_b;
+	mul_result[1] = mul_hi(mantissa_a, mantissa_b);
+
+	uint32_t exp_correction = mul_result[1] >> 41;
+	uint64_t exponent_mul_result = exponent_a + exponent_b + exp_correction - 1023;
+	uint32_t sign_mul_result = sign_a ^ sign_b;
+
+	if (exponent_mul_result >= 2047)
+		return *((double*)&inf_rnd);
+
+	uint64_t fma_result[2];
+	uint64_t t[2];
+	uint64_t exponent_fma_result;
+
+	if (exponent_mul_result >= exponent_c)
+	{
+		uint32_t shift = 23 - exp_correction;
+		fma_result[0] = mul_result[0] << shift;
+		fma_result[1] = (mul_result[1] << shift) | (mul_result[0] >> (64 - shift));
+
+		int32_t shift2 = (127 - 52) + (int32_t)(exponent_c - exponent_mul_result);
+
+		if (shift2 >= 0)
+		{
+			if (shift2 >= 64)
+			{
+				t[0] = 0;
+				t[1] = mantissa_c << (shift2 - 64);
+			}
+			else
+			{
+				t[0] = mantissa_c << shift2;
+				t[1] = shift2 ? (mantissa_c >> (64 - shift2)) : 0;
+			}
+		}
+		else
+		{
+			t[0] = (shift2 < -52) ? 0 : (mantissa_c >> (-shift2));
+			t[1] = 0;
+			if ((t[0] == 0) && (c != 0.0))
+				t[0] = 1;
+		}
+
+		exponent_fma_result = exponent_mul_result;
+	}
+	else
+	{
+		t[0] = 0;
+		t[1] = mantissa_c << 11;
+
+		int32_t shift2 = (127 - 104 - exp_correction) + (int32_t)(exponent_mul_result - exponent_c);
+		if (shift2 >= 0)
+		{
+			fma_result[0] = mul_result[0] << shift2;
+			fma_result[1] = (mul_result[1] << shift2) | (shift2 ? (mul_result[0] >> (64 - shift2)) : 0);
+		}
+		else
+		{
+			shift2 = -shift2;
+			if (shift2 >= 64)
+			{
+				shift2 -= 64;
+				fma_result[0] = (shift2 < 64) ? (mul_result[1] >> shift2) : 0;
+				fma_result[1] = 0;
+				if (fma_result[0] == 0)
+					fma_result[0] = 1;
+			}
+			else
+			{
+				fma_result[0] = (mul_result[0] >> shift2) | (mul_result[1] << (64 - shift2));
+				fma_result[1] = mul_result[1] >> shift2;
+			}
+		}
+
+		exponent_fma_result = exponent_c;
+	}
+
+	uint32_t sign_fma_result;
+
+	if (sign_mul_result == sign_c)
+	{
+		fma_result[0] += t[0];
+		fma_result[1] += t[1] + ((fma_result[0] < t[0]) ? 1 : 0);
+
+		exp_correction = (fma_result[1] < t[1]) ? 1 : 0;
+		sign_fma_result = sign_mul_result;
+	}
+	else
+	{
+		const uint32_t borrow = (fma_result[0] < t[0]) ? 1 : 0;
+		fma_result[0] -= t[0];
+
+		t[1] += borrow;
+		const uint32_t change_sign = (fma_result[1] < t[1]) ? 1 : 0;
+		fma_result[1] -= t[1];
+
+		sign_fma_result = sign_mul_result ^ change_sign;
+		if (change_sign)
+		{
+			fma_result[0] = -(int64_t)(fma_result[0]);
+			fma_result[1] = ~fma_result[1];
+			fma_result[1] += fma_result[0] ? 0 : 1;
+		}
+
+		if (fma_result[1] == 0)
+		{
+			if (fma_result[0] == 0)
+				return 0.0;
+
+			exponent_fma_result -= 64;
+			fma_result[1] = fma_result[0];
+			fma_result[0] = 0;
+		}
+
+		uint32_t index = 63 - clz(fma_result[1]);
+		if (index < 63)
+		{
+			index = 63 - index;
+			exponent_fma_result -= index;
+			fma_result[1] = (fma_result[1] << index) | (fma_result[0] >> (64 - index));
+		}
+
+		exp_correction = 0;
+	}
+
+	const uint32_t shift = 11 + exp_correction;
+	const uint64_t round_up = (fma_result[0] || (fma_result[1] & ((1 << shift) - 1))) ? 1 : 0;
+
+	fma_result[1] >>= shift;
+	fma_result[1] &= mantissa_mask;
+	if (rounding_mode + sign_fma_result == 2)
+	{
+		fma_result[1] += round_up;
+		if (fma_result[1] == mantissa_high_bit)
+		{
+			fma_result[1] = 0;
+			++exponent_fma_result;
+		}
+	}
+	fma_result[1] |= (exponent_fma_result + exp_correction) << mantissa_size;
+	fma_result[1] |= (uint64_t)(sign_fma_result) << 63;
+
+	const double result = *(double*)(fma_result + 1);
+	return result;
+}
+
 double div_rnd(double a, double b, uint32_t fprc)
 {
 	// Initial approximation
@@ -1488,7 +1681,9 @@ double div_rnd(double a, double b, uint32_t fprc)
 
 	// Improve initial approximation (can be skipped)
 	// 1 of 2^31 quotients will be incorrect in the last bit without it (1 incorrect hash per ~32768 hashes)
-	//y0 = fma(y0, fma(-b, y0, 1.0), y0);
+#ifdef HIGH_PRECISION
+	y0 = fma(y0, fma(-b, y0, 1.0), y0);
+#endif
 
 	// First Newton-Raphson iteration
 	const double y1 = fma(y0, fma(-b, y0, 1.0), y0);
@@ -1496,8 +1691,7 @@ double div_rnd(double a, double b, uint32_t fprc)
 	const double t1 = fma(-b, t0, a);
 
 	// Second Newton-Raphson iteration
-	// TODO: use correct rounding mode here
-	double result = fma(y1, t1, t0);
+	double result = fma_soft(y1, t1, t0, fprc);
 
 	// Check for infinity/NaN
 	const uint64_t inf = 2047UL << 52;
@@ -1524,7 +1718,9 @@ double sqrt_rnd(double x, uint32_t fprc)
 
 	// Improve initial approximation (can be skipped)
 	// 1 of 2^28 square roots will be incorrect in the last bit without it (1 incorrect hash per ~2731 hashes)
-	//y0 = fma(y0, fma(y0 * -0.5, y0 * x, 0.5), y0);
+#ifdef HIGH_PRECISION
+	y0 = fma(y0, fma(y0 * -0.5, y0 * x, 0.5), y0);
+#endif
 
 	// First Newton-Raphson iteration
 	t0 = y0 * x;
@@ -1537,8 +1733,7 @@ double sqrt_rnd(double x, uint32_t fprc)
 	y0 = fma(y0, t1, y0);					// 0.5 * y1
 	t1 = fma(-y1_x, y1_x, x);				// x * (1.0 - x * y1 * y1)
 
-	// TODO: use correct rounding mode here
-	double result = fma(t1, y0, y1_x);		// x * 0.5 * y1 * (3.0 - x * y1 * y1)
+	double result = fma_soft(t1, y0, y1_x, fprc);		// x * 0.5 * y1 * (3.0 - x * y1 * y1)
 
 	// Check for infinity
 	if (*((uint64_t*) &x) == (2047UL << 52)) result = x;
@@ -1671,8 +1866,7 @@ uint32_t inner_loop(
 					const double a = as_double(dst);
 					const double b = as_double(src);
 
-					// TODO: use correct rounding mode here
-					dst = as_ulong(fma(a, is_mul ? b : 1.0, is_mul ? 0.0 : b));
+					dst = as_ulong(fma_soft(a, is_mul ? b : 1.0, is_mul ? 0.0 : b, fprc));
 
 					//asm("// <------ FADD_R, FADD_M, FSUB_R, FSUB_M, FMUL_R (74/256)");
 				}

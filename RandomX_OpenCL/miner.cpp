@@ -31,7 +31,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 
 using namespace std::chrono;
 
-bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uint32_t start_nonce, uint32_t workers_per_hash, uint32_t bfactor, bool portable, bool validate)
+bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uint32_t start_nonce, uint32_t workers_per_hash, uint32_t bfactor, uint32_t high_precision, bool portable, bool validate)
 {
 	std::cout << "Initializing GPU #" << device_id << " on OpenCL platform #" << platform_id << std::endl << std::endl;
 
@@ -77,7 +77,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 		}
 
 		std::stringstream options;
-		options << "-D WORKERS_PER_HASH=" << workers_per_hash << " -cl-std=CL1.2 -Werror";
+		options << "-D WORKERS_PER_HASH=" << workers_per_hash << (high_precision ? " -D HIGH_PRECISION" : "") << " -cl-std=CL1.2 -Werror";
 		if (!ctx.Compile("randomx_vm.bin", { RANDOMX_VM_CL }, { CL_INIT_VM, CL_EXECUTE_VM }, options.str(), ALWAYS_COMPILE))
 		{
 			return false;
