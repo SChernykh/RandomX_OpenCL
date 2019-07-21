@@ -31,7 +31,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 
 using namespace std::chrono;
 
-bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uint32_t start_nonce, uint32_t workers_per_hash, uint32_t bfactor, uint32_t high_precision, bool portable, bool validate)
+bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uint32_t start_nonce, uint32_t workers_per_hash, uint32_t bfactor, uint32_t high_precision, bool portable, bool dataset_host_allocated, bool validate)
 {
 	std::cout << "Initializing GPU #" << device_id << " on OpenCL platform #" << platform_id << std::endl << std::endl;
 
@@ -104,14 +104,18 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 	intensity -= (intensity & 63);
 
 	const size_t dataset_size = randomx_dataset_item_count() * RANDOMX_DATASET_ITEM_SIZE;
-	ALLOCATE_DEVICE_MEMORY(dataset_gpu, ctx, dataset_size);
-
-	std::cout << "Allocated " << (dataset_size / 1048576.0) << " MB dataset" << std::endl;
+	cl_int err;
+	cl_mem dataset_gpu = nullptr;
+	if (!dataset_host_allocated)
+	{
+		dataset_gpu = clCreateBuffer(ctx.context, CL_MEM_READ_ONLY, dataset_size, nullptr, &err);
+		CL_CHECK_RESULT(clCreateBuffer);
+		std::cout << "Allocated " << (dataset_size / 1048576.0) << " MB dataset on GPU" << std::endl;
+	}
 	std::cout << "Initializing dataset...";
 
 	randomx_dataset *myDataset;
 	bool large_pages_available = true;
-	cl_int err;
 	{
 		auto t1 = high_resolution_clock::now();
 
@@ -162,9 +166,19 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 			}
 		}
 
-		CL_CHECKED_CALL(clEnqueueWriteBuffer, ctx.queue, dataset_gpu, CL_TRUE, 0, dataset_size, randomx_get_dataset_memory(myDataset), 0, nullptr, nullptr);
+		if (!dataset_host_allocated)
+		{
+			CL_CHECKED_CALL(clEnqueueWriteBuffer, ctx.queue, dataset_gpu, CL_TRUE, 0, dataset_size, randomx_get_dataset_memory(myDataset), 0, nullptr, nullptr);
+		}
 
 		std::cout << "done in " << (duration_cast<nanoseconds>(high_resolution_clock::now() - t1).count() / 1e9) << " seconds" << std::endl;
+	}
+
+	if (dataset_host_allocated)
+	{
+		dataset_gpu = clCreateBuffer(ctx.context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, dataset_size, randomx_get_dataset_memory(myDataset), &err);
+		CL_CHECK_RESULT(clCreateBuffer);
+		std::cout << "Using host-allocated " << (dataset_size / 1048576.0) << " MB dataset" << std::endl;
 	}
 
 	ALLOCATE_DEVICE_MEMORY(scratchpads_gpu, ctx, intensity * (SCRATCHPAD_SIZE + 64));

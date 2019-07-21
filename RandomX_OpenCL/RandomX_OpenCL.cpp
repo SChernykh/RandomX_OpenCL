@@ -44,6 +44,7 @@ int main(int argc, char** argv)
 	uint32_t bfactor = 5;
 	uint32_t high_precision = 1;
 	bool portable = false;
+	bool dataset_host_allocated = false;
 	bool validate = false;
 
 	for (int i = 1; i < argc; ++i)
@@ -64,12 +65,14 @@ int main(int argc, char** argv)
 			high_precision = 0;
 		else if (strcmp(argv[i], "--portable") == 0)
 			portable = true;
+		else if (strcmp(argv[i], "--dataset_host") == 0)
+			dataset_host_allocated = true;
 		else if (strcmp(argv[i], "--validate") == 0)
 			validate = true;
 	}
 
 	if (strcmp(argv[1], "--mine") == 0)
-		return test_mining(platform_id, device_id, intensity, start_nonce, workers_per_hash, bfactor, high_precision, portable, validate) ? 0 : 1;
+		return test_mining(platform_id, device_id, intensity, start_nonce, workers_per_hash, bfactor, high_precision, portable, dataset_host_allocated, validate) ? 0 : 1;
 	else if (strcmp(argv[1], "--test") == 0)
 		return tests(platform_id, device_id, intensity) ? 0 : 1;
 
