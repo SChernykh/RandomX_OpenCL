@@ -1,11 +1,11 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LocalDebuggerCommandArguments>--mine --validate --portable --workers 8 --bfactor 8 --intensity 3584</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>--mine --validate --portable --workers 8 --bfactor 5 --intensity 3584</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <LocalDebuggerCommandArguments>--mine --validate --portable --workers 8 --bfactor 8 --fast_fp --intensity 3584</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>--mine --validate --portable --workers 8 --bfactor 5 --fast_fp --intensity 3584</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
 </Project>
