@@ -40,6 +40,10 @@ int main(int argc, char** argv)
 	uint32_t device_id = 0;
 	size_t intensity = 0;
 	uint32_t start_nonce = 0;
+	uint32_t workers_per_hash = 8;
+	uint32_t bfactor = 5;
+	uint32_t high_precision = 1;
+	bool portable = false;
 	bool validate = false;
 
 	for (int i = 1; i < argc; ++i)
@@ -52,12 +56,20 @@ int main(int argc, char** argv)
 			intensity = atoi(argv[i + 1]);
 		else if ((strcmp(argv[i], "--nonce") == 0) && (i + 1 < argc))
 			start_nonce = atoi(argv[i + 1]);
+		else if ((strcmp(argv[i], "--workers") == 0) && (i + 1 < argc))
+			workers_per_hash = atoi(argv[i + 1]);
+		else if ((strcmp(argv[i], "--bfactor") == 0) && (i + 1 < argc))
+			bfactor = atoi(argv[i + 1]);
+		else if (strcmp(argv[i], "--fast_fp") == 0)
+			high_precision = 0;
+		else if (strcmp(argv[i], "--portable") == 0)
+			portable = true;
 		else if (strcmp(argv[i], "--validate") == 0)
 			validate = true;
 	}
 
 	if (strcmp(argv[1], "--mine") == 0)
-		return test_mining(platform_id, device_id, intensity, start_nonce, validate) ? 0 : 1;
+		return test_mining(platform_id, device_id, intensity, start_nonce, workers_per_hash, bfactor, high_precision, portable, validate) ? 0 : 1;
 	else if (strcmp(argv[1], "--test") == 0)
 		return tests(platform_id, device_id, intensity) ? 0 : 1;
 

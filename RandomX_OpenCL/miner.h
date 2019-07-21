@@ -19,4 +19,4 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 
 #pragma once
 
-bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uint32_t start_nonce, bool validate);
+bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uint32_t start_nonce, uint32_t workers_per_hash, uint32_t bfactor, uint32_t high_precision, bool portable, bool validate);

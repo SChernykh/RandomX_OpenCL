@@ -26,6 +26,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #define INITIAL_HASH_SIZE 64
 #define RANDOMX_PROGRAM_SIZE 256
 #define ENTROPY_SIZE (128 + 2048)
+#define VM_STATE_SIZE 2048
 #define INTERMEDIATE_PROGRAM_SIZE 4096
 #define COMPILED_PROGRAM_SIZE 10048
 #define LOCAL_GROUP_SIZE 64

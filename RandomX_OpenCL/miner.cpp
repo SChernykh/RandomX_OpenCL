@@ -31,7 +31,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 
 using namespace std::chrono;
 
-bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uint32_t start_nonce, bool validate)
+bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uint32_t start_nonce, uint32_t workers_per_hash, uint32_t bfactor, uint32_t high_precision, bool portable, bool validate)
 {
 	std::cout << "Initializing GPU #" << device_id << " on OpenCL platform #" << platform_id << std::endl << std::endl;
 
@@ -61,16 +61,41 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 		return false;
 	}
 
-	if (!ctx.Compile("randomx_init.bin", { RANDOMX_INIT_CL }, { CL_RANDOMX_INIT }, "", ALWAYS_COMPILE))
+	if (portable)
 	{
-		return false;
-	}
+		switch (workers_per_hash)
+		{
+		case 2:
+		case 4:
+		case 8:
+		case 16:
+			break;
 
-	std::stringstream options;
-	options << "-D RANDOMX_PROGRAM_ITERATIONS=" << RANDOMX_PROGRAM_ITERATIONS;
-	if (!ctx.Compile("randomx_run.bin", { RANDOMX_RUN_CL }, { CL_RANDOMX_RUN }, options.str(), ALWAYS_USE_BINARY))
+		default:
+			workers_per_hash = 8;
+			break;
+		}
+
+		std::stringstream options;
+		options << "-D WORKERS_PER_HASH=" << workers_per_hash << (high_precision ? " -D HIGH_PRECISION" : "") << " -cl-std=CL1.1 -Werror";
+		if (!ctx.Compile("randomx_vm.bin", { RANDOMX_VM_CL }, { CL_INIT_VM, CL_EXECUTE_VM }, options.str(), ALWAYS_COMPILE))
+		{
+			return false;
+		}
+	}
+	else
 	{
-		return false;
+		if (!ctx.Compile("randomx_init.bin", { RANDOMX_INIT_CL }, { CL_RANDOMX_INIT }, "", ALWAYS_COMPILE))
+		{
+			return false;
+		}
+
+		std::stringstream options;
+		options << "-D RANDOMX_PROGRAM_ITERATIONS=" << RANDOMX_PROGRAM_ITERATIONS;
+		if (!ctx.Compile("randomx_run.bin", { RANDOMX_RUN_CL }, { CL_RANDOMX_RUN }, options.str(), ALWAYS_USE_BINARY))
+		{
+			return false;
+		}
 	}
 
 	if (!intensity)
@@ -147,11 +172,11 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 
 	ALLOCATE_DEVICE_MEMORY(hashes_gpu, ctx, intensity * INITIAL_HASH_SIZE);
 	ALLOCATE_DEVICE_MEMORY(entropy_gpu, ctx, intensity * ENTROPY_SIZE);
-	ALLOCATE_DEVICE_MEMORY(registers_gpu, ctx, intensity * REGISTERS_SIZE);
+	ALLOCATE_DEVICE_MEMORY(vm_states_gpu, ctx, portable ? (intensity * VM_STATE_SIZE) : (intensity * REGISTERS_SIZE));
 	ALLOCATE_DEVICE_MEMORY(rounding_gpu, ctx, intensity * sizeof(uint32_t));
 	ALLOCATE_DEVICE_MEMORY(blocktemplate_gpu, ctx, intensity * sizeof(blockTemplate));
-	ALLOCATE_DEVICE_MEMORY(intermediate_programs_gpu, ctx, intensity * INTERMEDIATE_PROGRAM_SIZE);
-	ALLOCATE_DEVICE_MEMORY(compiled_programs_gpu, ctx, (intensity / HASHES_PER_GROUP) * COMPILED_PROGRAM_SIZE);
+	ALLOCATE_DEVICE_MEMORY(intermediate_programs_gpu, ctx, portable ? 0 : (intensity * INTERMEDIATE_PROGRAM_SIZE));
+	ALLOCATE_DEVICE_MEMORY(compiled_programs_gpu, ctx, portable ? 0 : ((intensity / HASHES_PER_GROUP) * COMPILED_PROGRAM_SIZE));
 
 	CL_CHECKED_CALL(clEnqueueWriteBuffer, ctx.queue, blocktemplate_gpu, CL_TRUE, 0, sizeof(blockTemplate), blockTemplate, 0, nullptr, nullptr);
 
@@ -185,40 +210,62 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 		return false;
 	}
 
-	cl_kernel kernel_randomx_init = ctx.kernels[CL_RANDOMX_INIT];
-	if (!clSetKernelArgs(kernel_randomx_init, entropy_gpu, registers_gpu, intermediate_programs_gpu, compiled_programs_gpu, static_cast<uint32_t>(intensity)))
+	cl_kernel kernel_randomx_init, kernel_randomx_run;
+	if (portable)
 	{
-		return false;
-	}
+		kernel_randomx_init = ctx.kernels[CL_INIT_VM];
+		if (!clSetKernelArgs(kernel_randomx_init, entropy_gpu, vm_states_gpu))
+		{
+			return false;
+		}
 
-	cl_kernel kernel_randomx_run = ctx.kernels[CL_RANDOMX_RUN];
-	if (!clSetKernelArgs(kernel_randomx_run, dataset_gpu, scratchpads_gpu, registers_gpu, rounding_gpu, compiled_programs_gpu, static_cast<uint32_t>(intensity)))
+		kernel_randomx_run = ctx.kernels[CL_EXECUTE_VM];
+		if (!clSetKernelArgs(kernel_randomx_run, vm_states_gpu, rounding_gpu, scratchpads_gpu, dataset_gpu, static_cast<uint32_t>(intensity), static_cast<uint32_t>(RANDOMX_PROGRAM_ITERATIONS >> bfactor), 1U, 1U))
+		{
+			return false;
+		}
+	}
+	else
 	{
-		return false;
+		kernel_randomx_init = ctx.kernels[CL_RANDOMX_INIT];
+		if (!clSetKernelArgs(kernel_randomx_init, entropy_gpu, vm_states_gpu, intermediate_programs_gpu, compiled_programs_gpu, static_cast<uint32_t>(intensity)))
+		{
+			return false;
+		}
+
+		kernel_randomx_run = ctx.kernels[CL_RANDOMX_RUN];
+		if (!clSetKernelArgs(kernel_randomx_run, dataset_gpu, scratchpads_gpu, vm_states_gpu, rounding_gpu, compiled_programs_gpu, static_cast<uint32_t>(intensity)))
+		{
+			return false;
+		}
 	}
 
 	cl_kernel kernel_hashaes1rx4 = ctx.kernels[CL_HASHAES1RX4];
-	if (!clSetKernelArgs(kernel_hashaes1rx4, scratchpads_gpu, registers_gpu, static_cast<uint32_t>(intensity)))
+	if (!clSetKernelArgs(kernel_hashaes1rx4, scratchpads_gpu, vm_states_gpu, 192U, static_cast<uint32_t>(portable ? VM_STATE_SIZE : REGISTERS_SIZE), static_cast<uint32_t>(intensity)))
 	{
 		return false;
 	}
 
 	cl_kernel kernel_blake2b_hash_registers_32 = ctx.kernels[CL_BLAKE2B_HASH_REGISTERS_32];
-	if (!clSetKernelArgs(kernel_blake2b_hash_registers_32, hashes_gpu, registers_gpu))
+	if (!clSetKernelArgs(kernel_blake2b_hash_registers_32, hashes_gpu, vm_states_gpu, static_cast<uint32_t>(portable ? VM_STATE_SIZE : REGISTERS_SIZE)))
 	{
 		return false;
 	}
 
 	cl_kernel kernel_blake2b_hash_registers_64 = ctx.kernels[CL_BLAKE2B_HASH_REGISTERS_64];
-	if (!clSetKernelArgs(kernel_blake2b_hash_registers_64, hashes_gpu, registers_gpu))
+	if (!clSetKernelArgs(kernel_blake2b_hash_registers_64, hashes_gpu, vm_states_gpu, static_cast<uint32_t>(portable ? VM_STATE_SIZE : REGISTERS_SIZE)))
 	{
 		return false;
 	}
 
 	const size_t global_work_size = intensity;
 	const size_t global_work_size4 = intensity * 4;
+	const size_t global_work_size8 = intensity * 8;
+	const size_t global_work_size16 = intensity * 16;
 	const size_t global_work_size64 = intensity * 64;
 	const size_t local_work_size = 64;
+	const size_t local_work_size32 = 32;
+	const size_t local_work_size16 = 16;
 	const uint32_t zero = 0;
 
 	for (size_t nonce = start_nonce, k = 0; nonce < 0xFFFFFFFFUL; nonce += intensity, ++k)
@@ -292,19 +339,45 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 		for (size_t i = 0; i < RANDOMX_PROGRAM_COUNT; ++i)
 		{
 			CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_fillaes1rx4_entropy, 1, nullptr, &global_work_size4, &local_work_size, 0, nullptr, nullptr);
-			CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_init, 1, nullptr, &global_work_size, &local_work_size, 0, nullptr, nullptr);
-			//if (i == 0)
-			//{
-			//	CL_CHECKED_CALL(clFinish, ctx.queue);
-			//	std::vector<char> buf((intensity / HASHES_PER_GROUP) * COMPILED_PROGRAM_SIZE);
-			//	CL_CHECKED_CALL(clEnqueueReadBuffer, ctx.queue, compiled_programs_gpu, CL_TRUE, 0, buf.size(), buf.data(), 0, nullptr, nullptr);
-			//	FILE* fp;
-			//	fopen_s(&fp, "compiled_program.bin", "wb");
-			//	fwrite(buf.data(), 1, buf.size(), fp);
-			//	fclose(fp);
-			//	return false;
-			//}
-			CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_run, 1, nullptr, &global_work_size64, &local_work_size, 0, nullptr, nullptr);
+			CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_init, 1, nullptr, portable ? &global_work_size8 : &global_work_size, portable ? &local_work_size32 : &local_work_size, 0, nullptr, nullptr);
+			if (portable)
+			{
+				uint32_t first = 1;
+				uint32_t last = 0;
+				CL_CHECKED_CALL(clSetKernelArg, kernel_randomx_run, 6, sizeof(uint32_t), &first);
+				CL_CHECKED_CALL(clSetKernelArg, kernel_randomx_run, 7, sizeof(uint32_t), &last);
+				for (int j = 0, n = 1 << bfactor; j < n; ++j)
+				{
+					if (j == n - 1)
+					{
+						last = 1;
+						CL_CHECKED_CALL(clSetKernelArg, kernel_randomx_run, 7, sizeof(uint32_t), &last);
+					}
+
+					CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_run, 1, nullptr, (workers_per_hash == 16) ? &global_work_size16 : &global_work_size8, (workers_per_hash == 16) ? &local_work_size32 : &local_work_size16, 0, nullptr, nullptr);
+
+					if (j == 0)
+					{
+						first = 0;
+						CL_CHECKED_CALL(clSetKernelArg, kernel_randomx_run, 6, sizeof(uint32_t), &first);
+					}
+				}
+			}
+			else
+			{
+				//if (i == 0)
+				//{
+				//	CL_CHECKED_CALL(clFinish, ctx.queue);
+				//	std::vector<char> buf((intensity / HASHES_PER_GROUP) * COMPILED_PROGRAM_SIZE);
+				//	CL_CHECKED_CALL(clEnqueueReadBuffer, ctx.queue, compiled_programs_gpu, CL_TRUE, 0, buf.size(), buf.data(), 0, nullptr, nullptr);
+				//	FILE* fp;
+				//	fopen_s(&fp, "compiled_program.bin", "wb");
+				//	fwrite(buf.data(), 1, buf.size(), fp);
+				//	fclose(fp);
+				//	return false;
+				//}
+				CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_run, 1, nullptr, &global_work_size64, &local_work_size, 0, nullptr, nullptr);
+			}
 
 			if (i == RANDOMX_PROGRAM_COUNT - 1)
 			{

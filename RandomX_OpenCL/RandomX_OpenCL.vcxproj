@@ -111,6 +111,7 @@
     <None Include="CL\fillAes1Rx4.cl" />
     <None Include="CL\randomx_init.cl" />
     <None Include="CL\randomx_run.cl" />
+    <None Include="CL\randomx_vm.cl" />
     <CustomBuild Include="GCNASM\randomx_run.asm">
       <FileType>Document</FileType>
       <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">clrxasm %(Identity) -o %(Filename).bin</Command>

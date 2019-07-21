@@ -1,14 +1,15 @@
 # RandomX OpenCL implementation
 
-This repository contains full RandomX implementation for AMD Vega GPUs. The latest version of RandomX (1.0.4 as of June 23rd, 2019) is supported.
+This repository contains full RandomX OpenCL implementation (portable code for all GPUs and optimized code AMD Vega GPUs). The latest version of RandomX (1.0.4 as of June 23rd, 2019) is supported.
 
 Note: it's only a benchmark/testing tool, not an actual miner. RandomX hashrate is expected to improve somewhat in the future thanks to further optimizations.
 
 GPUs tested so far:
 
-Model|CryptonightR H/S|RandomX H/S|Relative speed
------|---------------|-----------|--------------
-AMD Vega 64 (1700/1100 MHz)|2200|1188|54%
+Model|CryptonightR H/S|RandomX H/S|Relative speed|Comment
+-----|---------------|-----------|---------------|-------
+AMD Vega 64 (1700/1100 MHz)|2200|1188|54%|JIT compiled mode
+GeForce GTX 1080 Ti (2037/11800 MHz)|927|662|71.4%|VM interpreted mode
 
 ## Building on Windows
 
