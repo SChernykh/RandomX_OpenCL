@@ -66,13 +66,13 @@
     <None Include="CL\randomx_run.cl">
       <Filter>Source Files\CL</Filter>
     </None>
+    <None Include="CL\randomx_vm.cl">
+      <Filter>Source Files\CL</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="GCNASM\randomx_run.asm">
       <Filter>Source Files\GCNASM</Filter>
-    </CustomBuild>
-    <CustomBuild Include="CL\randomx_vm.cl">
-      <Filter>Source Files\CL</Filter>
     </CustomBuild>
   </ItemGroup>
 </Project>
