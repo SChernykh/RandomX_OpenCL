@@ -110,6 +110,7 @@ begin:
 
 		# Base address for non-strided scratchpads
 		s_mov_b32       s2, 2097152 + 64
+		v_mul_hi_u32    v20, v2, s2
 		v_mul_lo_u32    v2, v2, s2
 
 		# Base address for strided scratchpads
@@ -155,7 +156,7 @@ begin:
 		s_waitcnt       lgkmcnt(0)
 		v_add_co_u32    v2, vcc, s10, v2
 		v_mov_b32       v18, s11
-		v_addc_co_u32   v18, vcc, v18, 0, vcc
+		v_addc_co_u32   v18, vcc, v18, v20, vcc
 		v_mov_b32       v19, 0xffffff
 		v_add_co_u32    v6, vcc, s8, v6
 		v_mov_b32       v20, s9
