@@ -76,11 +76,11 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 	}
 
 	if (!intensity)
-		intensity = std::min(ctx.device_max_alloc_size, ctx.device_global_mem_size) / SCRATCHPAD_SIZE;
+		intensity = std::min(ctx.device_max_alloc_size, ctx.device_global_mem_size) / RANDOMX_SCRATCHPAD_L3;
 
 	intensity -= (intensity & 63);
 
-	ALLOCATE_DEVICE_MEMORY(scratchpads_gpu, ctx, intensity * (SCRATCHPAD_SIZE + 64));
+	ALLOCATE_DEVICE_MEMORY(scratchpads_gpu, ctx, intensity * (RANDOMX_SCRATCHPAD_L3 + 64));
 	std::cout << "Allocated " << intensity << " scratchpads" << std::endl << std::endl;
 
 	ALLOCATE_DEVICE_MEMORY(entropy_gpu, ctx, intensity * ENTROPY_SIZE);
@@ -183,15 +183,15 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 
 		uint64_t k;
 	};
-	std::vector<Dummy> scratchpads_buf((SCRATCHPAD_SIZE + 64) * (intensity + 1) / sizeof(Dummy));
+	std::vector<Dummy> scratchpads_buf((RANDOMX_SCRATCHPAD_L3 + 64) * (intensity + 1) / sizeof(Dummy));
 	uint8_t* scratchpads = reinterpret_cast<uint8_t*>(scratchpads_buf.data());
 
 	CL_CHECKED_CALL(clEnqueueReadBuffer, ctx.queue, hash_gpu, CL_TRUE, 0, intensity * INITIAL_HASH_SIZE, hashes.data(), 0, nullptr, nullptr);
-	CL_CHECKED_CALL(clEnqueueReadBuffer, ctx.queue, scratchpads_gpu, CL_TRUE, 0, intensity * (SCRATCHPAD_SIZE + 64), scratchpads, 0, nullptr, nullptr);
+	CL_CHECKED_CALL(clEnqueueReadBuffer, ctx.queue, scratchpads_gpu, CL_TRUE, 0, intensity * (RANDOMX_SCRATCHPAD_L3 + 64), scratchpads, 0, nullptr, nullptr);
 
 	for (size_t i = 0; i < intensity; ++i)
 	{
-		fillAes1Rx4<false>(hashes2.data() + i * INITIAL_HASH_SIZE, SCRATCHPAD_SIZE, scratchpads + (SCRATCHPAD_SIZE + 64) * intensity);
+		fillAes1Rx4<false>(hashes2.data() + i * INITIAL_HASH_SIZE, RANDOMX_SCRATCHPAD_L3, scratchpads + (RANDOMX_SCRATCHPAD_L3 + 64) * intensity);
 
 		if (memcmp(hashes.data() + i * INITIAL_HASH_SIZE, hashes2.data() + i * INITIAL_HASH_SIZE, INITIAL_HASH_SIZE) != 0)
 		{
@@ -199,9 +199,9 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 			return false;
 		}
 
-		const uint8_t* p1 = scratchpads + (SCRATCHPAD_SIZE + 64) * i;
-		const uint8_t* p2 = scratchpads + (SCRATCHPAD_SIZE + 64) * intensity;
-		if (memcmp(p1, p2, SCRATCHPAD_SIZE) != 0)
+		const uint8_t* p1 = scratchpads + (RANDOMX_SCRATCHPAD_L3 + 64) * i;
+		const uint8_t* p2 = scratchpads + (RANDOMX_SCRATCHPAD_L3 + 64) * intensity;
+		if (memcmp(p1, p2, RANDOMX_SCRATCHPAD_L3) != 0)
 		{
 			std::cerr << "fillAes1Rx4_scratchpad test (scratchpad) failed!" << std::endl;
 			return false;
@@ -255,11 +255,11 @@ bool tests(uint32_t platform_id, uint32_t device_id, size_t intensity)
 	for (size_t i = 0; i < intensity; ++i)
 	{
 		memset(registers.data() + REGISTERS_SIZE * intensity, 0, REGISTERS_SIZE);
-		uint8_t* src = scratchpads + (SCRATCHPAD_SIZE + 64) * i;
-		uint8_t* dst = scratchpads + (SCRATCHPAD_SIZE + 64) * intensity;
-		memcpy(dst, src, SCRATCHPAD_SIZE);
+		uint8_t* src = scratchpads + (RANDOMX_SCRATCHPAD_L3 + 64) * i;
+		uint8_t* dst = scratchpads + (RANDOMX_SCRATCHPAD_L3 + 64) * intensity;
+		memcpy(dst, src, RANDOMX_SCRATCHPAD_L3);
 
-		hashAes1Rx4<false>(scratchpads + (SCRATCHPAD_SIZE + 64) * intensity, SCRATCHPAD_SIZE, registers.data() + intensity * REGISTERS_SIZE + 192);
+		hashAes1Rx4<false>(scratchpads + (RANDOMX_SCRATCHPAD_L3 + 64) * intensity, RANDOMX_SCRATCHPAD_L3, registers.data() + intensity * REGISTERS_SIZE + 192);
 
 		if (memcmp(registers.data() + i * REGISTERS_SIZE, registers.data() + intensity * REGISTERS_SIZE, REGISTERS_SIZE) != 0)
 		{

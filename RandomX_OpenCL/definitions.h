@@ -21,6 +21,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 
 #include <string>
 #include "CL/randomx_constants.h"
+#include "CL/randomx_constants_jit.h"
 
 static const std::string AES_CL = "CL/aes.cl";
 static const std::string CL_FILLAES1RX4_SCRATCHPAD = "fillAes1Rx4_scratchpad";

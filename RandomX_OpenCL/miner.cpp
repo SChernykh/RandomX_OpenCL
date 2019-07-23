@@ -99,7 +99,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 	}
 
 	if (!intensity)
-		intensity = std::min(ctx.device_max_alloc_size, ctx.device_global_mem_size) / SCRATCHPAD_SIZE;
+		intensity = std::min(ctx.device_max_alloc_size, ctx.device_global_mem_size) / RANDOMX_SCRATCHPAD_L3;
 
 	intensity -= (intensity & 63);
 
@@ -181,7 +181,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 		std::cout << "Using host-allocated " << (dataset_size / 1048576.0) << " MB dataset" << std::endl;
 	}
 
-	ALLOCATE_DEVICE_MEMORY(scratchpads_gpu, ctx, intensity * (SCRATCHPAD_SIZE + 64));
+	ALLOCATE_DEVICE_MEMORY(scratchpads_gpu, ctx, intensity * (RANDOMX_SCRATCHPAD_L3 + 64));
 	std::cout << "Allocated " << intensity << " scratchpads\n" << std::endl;
 
 	ALLOCATE_DEVICE_MEMORY(hashes_gpu, ctx, intensity * INITIAL_HASH_SIZE);

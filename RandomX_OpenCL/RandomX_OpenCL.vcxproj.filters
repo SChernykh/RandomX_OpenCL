@@ -46,6 +46,9 @@
     <ClInclude Include="CL\randomx_constants.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="CL\randomx_constants_jit.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="CL\aes.cl">
