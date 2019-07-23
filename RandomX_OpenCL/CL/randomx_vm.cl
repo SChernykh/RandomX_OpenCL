@@ -804,9 +804,9 @@ __kernel void init_vm(__global const void* entropy_data, __global void* vm_state
 					int32_t value = get_byte(registerReadCycle, dst);
 					update_max(value, slot_to_use / WORKERS_PER_HASH);
 					set_byte(registerReadCycle, dst, value);
-					ScratchpadLatency = slot_to_use / WORKERS_PER_HASH;
+					ScratchpadLatency = (slot_to_use / WORKERS_PER_HASH) + 1;
 					if ((mod >> 4) >= StoreL3Condition)
-						ScratchpadHighLatency = slot_to_use / WORKERS_PER_HASH;
+						ScratchpadHighLatency = (slot_to_use / WORKERS_PER_HASH) + 1;
 				}
 			}
 
@@ -1598,27 +1598,12 @@ double fma_soft(double a, double b, double c, uint32_t rounding_mode)
 
 double div_rnd(double a, double b, uint32_t fprc)
 {
-	// Initial approximation
-	double y0;
-#ifdef __NV_CL_C_VERSION
-	asm("rcp.approx.ftz.f64 %0, %1;" : "=d"(y0) : "d"(b));
-#else
-	y0 = native_recip(b);
-#endif
+	double y0 = 1.0 / b;
 
-	// Improve initial approximation (can be skipped)
-	// 1 of 2^31 quotients will be incorrect in the last bit without it (1 incorrect hash per ~32768 hashes)
-#ifdef HIGH_PRECISION
-	y0 = fma(y0, fma(-b, y0, 1.0), y0);
-#endif
-
-	// First Newton-Raphson iteration
-	const double y1 = fma(y0, fma(-b, y0, 1.0), y0);
-	const double t0 = a * y1;
+	// Do 1 Newton-Raphson iteration to get correct rounding
+	const double t0 = a * y0;
 	const double t1 = fma(-b, t0, a);
-
-	// Second Newton-Raphson iteration
-	double result = fma_soft(y1, t1, t0, fprc);
+	double result = fma_soft(y0, t1, t0, fprc);
 
 	// Check for infinity/NaN
 	const uint64_t inf = 2047UL << 52;
@@ -1627,31 +1612,16 @@ double div_rnd(double a, double b, uint32_t fprc)
 	if (((as_ulong(result) >> 52) & 2047) == 2047) result = as_double(inf_rnd);
 	if (as_ulong(a) == inf) result = a;
 
-	// Check for exact equality
-	if (a == b) result = 1.0;
-
-	return result;
+	return (a == b) ? 1.0 : result;
 }
 
 double sqrt_rnd(double x, uint32_t fprc)
 {
-	// Initial approximation
-	double y0, t0, t1;
-#ifdef __NV_CL_C_VERSION
-	asm("rsqrt.approx.ftz.f64 %0, %1;" : "=d"(y0) : "d"(x));
-#else
-	y0 = native_rsqrt(x);
-#endif
-
-	// Improve initial approximation (can be skipped)
-	// 1 of 2^28 square roots will be incorrect in the last bit without it (1 incorrect hash per ~2731 hashes)
-#ifdef HIGH_PRECISION
-	y0 = fma(y0, fma(y0 * -0.5, y0 * x, 0.5), y0);
-#endif
+	double y0 = rsqrt(x);
 
 	// First Newton-Raphson iteration
-	t0 = y0 * x;
-	t1 = y0 * -0.5;
+	double t0 = y0 * x;
+	double t1 = y0 * -0.5;
 	t1 = fma(t1, t0, 0.5);					// 0.5 * (1.0 - y0 * y0 * x)
 	const double y1_x = fma(t0, t1, t0);	// y1 * x = 0.5 * y0 * x * (3.0 - y0 * y0 * x)
 
