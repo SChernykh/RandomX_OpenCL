@@ -987,8 +987,12 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 	#pragma unroll(1)
 	for (int pass = 0; pass < 2; ++pass)
 	{
+#if RANDOMX_PROGRAM_SIZE > 256
+		int registerLastChanged[8] = { -1, -1, -1, -1, -1, -1, -1, -1 };
+#else
 		ulong registerLastChanged = 0;
 		uint registerWasChanged = 0;
+#endif
 
 		uint scratchpadAvailableAt = 0;
 		uint scratchpadHighAvailableAt = 0;
@@ -996,8 +1000,12 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 		int lastBranchTarget = -1;
 		int lastBranch = -1;
 
+#if RANDOMX_PROGRAM_SIZE > 256
+		int registerLastChangedAtBranchTarget[8] = { -1, -1, -1, -1, -1, -1, -1, -1 };
+#else
 		ulong registerLastChangedAtBranchTarget = 0;
 		uint registerWasChangedAtBranchTarget = 0;
+#endif
 		uint scratchpadAvailableAtBranchTarget = 0;
 		uint scratchpadHighAvailableAtBranchTarget = 0;
 
@@ -1022,8 +1030,14 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 				if (inst.x & (0x20 << 8))
 				{
  					lastBranchTarget = i;
+#if RANDOMX_PROGRAM_SIZE > 256
+					#pragma unroll
+					for (int j = 0; j < 8; ++j)
+						registerLastChangedAtBranchTarget[j] = registerLastChanged[j];
+#else
 					registerLastChangedAtBranchTarget = registerLastChanged;
 					registerWasChangedAtBranchTarget = registerWasChanged;
+#endif
 					scratchpadAvailableAtBranchTarget = scratchpadAvailableAt;
 					scratchpadHighAvailableAtBranchTarget = scratchpadHighAvailableAt;
 				}
@@ -1033,21 +1047,34 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 					lastBranch = i;
 			}
 
+#if RANDOMX_PROGRAM_SIZE > 256
+			const uint srcAvailableAt = registerLastChanged[src] + 1;
+			const uint dstAvailableAt = registerLastChanged[dst] + 1;
+#else
 			const uint srcAvailableAt = (registerWasChanged & (1u << src)) ? (((registerLastChanged >> (src * 8)) & 0xFF) + 1) : 0;
 			const uint dstAvailableAt = (registerWasChanged & (1u << dst)) ? (((registerLastChanged >> (dst * 8)) & 0xFF) + 1) : 0;
+#endif
 
 			if (opcode < RANDOMX_FREQ_IADD_RS)
 			{
+#if RANDOMX_PROGRAM_SIZE > 256
+				registerLastChanged[dst] = i;
+#else
 				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 				registerWasChanged |= 1u << dst;
+#endif
 				continue;
 			}
 			opcode -= RANDOMX_FREQ_IADD_RS;
 
 			if (opcode < RANDOMX_FREQ_IADD_M)
 			{
+#if RANDOMX_PROGRAM_SIZE > 256
+				registerLastChanged[dst] = i;
+#else
 				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 				registerWasChanged |= 1u << dst;
+#endif
 				if (pass == 1)
 					prefetch_data_count = jit_prefetch_read(p0, prefetch_data_count, i, src, dst, inst, srcAvailableAt, scratchpadAvailableAt, scratchpadHighAvailableAt, lastBranchTarget, lastBranch);
 				continue;
@@ -1056,16 +1083,24 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 
 			if (opcode < RANDOMX_FREQ_ISUB_R)
 			{
+#if RANDOMX_PROGRAM_SIZE > 256
+				registerLastChanged[dst] = i;
+#else
 				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 				registerWasChanged |= 1u << dst;
+#endif
 				continue;
 			}
 			opcode -= RANDOMX_FREQ_ISUB_R;
 
 			if (opcode < RANDOMX_FREQ_ISUB_M)
 			{
+#if RANDOMX_PROGRAM_SIZE > 256
+				registerLastChanged[dst] = i;
+#else
 				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 				registerWasChanged |= 1u << dst;
+#endif
 				if (pass == 1)
 					prefetch_data_count = jit_prefetch_read(p0, prefetch_data_count, i, src, dst, inst, srcAvailableAt, scratchpadAvailableAt, scratchpadHighAvailableAt, lastBranchTarget, lastBranch);
 				continue;
@@ -1074,16 +1109,24 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 
 			if (opcode < RANDOMX_FREQ_IMUL_R)
 			{
+#if RANDOMX_PROGRAM_SIZE > 256
+				registerLastChanged[dst] = i;
+#else
 				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 				registerWasChanged |= 1u << dst;
+#endif
 				continue;
 			}
 			opcode -= RANDOMX_FREQ_IMUL_R;
 
 			if (opcode < RANDOMX_FREQ_IMUL_M)
 			{
+#if RANDOMX_PROGRAM_SIZE > 256
+				registerLastChanged[dst] = i;
+#else
 				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 				registerWasChanged |= 1u << dst;
+#endif
 				if (pass == 1)
 					prefetch_data_count = jit_prefetch_read(p0, prefetch_data_count, i, src, dst, inst, srcAvailableAt, scratchpadAvailableAt, scratchpadHighAvailableAt, lastBranchTarget, lastBranch);
 				continue;
@@ -1092,16 +1135,24 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 
 			if (opcode < RANDOMX_FREQ_IMULH_R)
 			{
+#if RANDOMX_PROGRAM_SIZE > 256
+				registerLastChanged[dst] = i;
+#else
 				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 				registerWasChanged |= 1u << dst;
+#endif
 				continue;
 			}
 			opcode -= RANDOMX_FREQ_IMULH_R;
 
 			if (opcode < RANDOMX_FREQ_IMULH_M)
 			{
+#if RANDOMX_PROGRAM_SIZE > 256
+				registerLastChanged[dst] = i;
+#else
 				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 				registerWasChanged |= 1u << dst;
+#endif
 				if (pass == 1)
 					prefetch_data_count = jit_prefetch_read(p0, prefetch_data_count, i, src, dst, inst, srcAvailableAt, scratchpadAvailableAt, scratchpadHighAvailableAt, lastBranchTarget, lastBranch);
 				continue;
@@ -1110,16 +1161,24 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 
 			if (opcode < RANDOMX_FREQ_ISMULH_R)
 			{
+#if RANDOMX_PROGRAM_SIZE > 256
+				registerLastChanged[dst] = i;
+#else
 				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 				registerWasChanged |= 1u << dst;
+#endif
 				continue;
 			}
 			opcode -= RANDOMX_FREQ_ISMULH_R;
 
 			if (opcode < RANDOMX_FREQ_ISMULH_M)
 			{
+#if RANDOMX_PROGRAM_SIZE > 256
+				registerLastChanged[dst] = i;
+#else
 				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 				registerWasChanged |= 1u << dst;
+#endif
 				if (pass == 1)
 					prefetch_data_count = jit_prefetch_read(p0, prefetch_data_count, i, src, dst, inst, srcAvailableAt, scratchpadAvailableAt, scratchpadHighAvailableAt, lastBranchTarget, lastBranch);
 				continue;
@@ -1130,8 +1189,12 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 			{
 				if (inst.y & (inst.y - 1))
 				{
+#if RANDOMX_PROGRAM_SIZE > 256
+					registerLastChanged[dst] = i;
+#else
 					registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 					registerWasChanged |= 1u << dst;
+#endif
 				}
 				continue;
 			}
@@ -1139,16 +1202,24 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 
 			if (opcode < RANDOMX_FREQ_INEG_R + RANDOMX_FREQ_IXOR_R)
 			{
+#if RANDOMX_PROGRAM_SIZE > 256
+				registerLastChanged[dst] = i;
+#else
 				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 				registerWasChanged |= 1u << dst;
+#endif
 				continue;
 			}
 			opcode -= RANDOMX_FREQ_INEG_R + RANDOMX_FREQ_IXOR_R;
 
 			if (opcode < RANDOMX_FREQ_IXOR_M)
 			{
+#if RANDOMX_PROGRAM_SIZE > 256
+				registerLastChanged[dst] = i;
+#else
 				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 				registerWasChanged |= 1u << dst;
+#endif
 				if (pass == 1)
 					prefetch_data_count = jit_prefetch_read(p0, prefetch_data_count, i, src, dst, inst, srcAvailableAt, scratchpadAvailableAt, scratchpadHighAvailableAt, lastBranchTarget, lastBranch);
 				continue;
@@ -1157,8 +1228,12 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 
 			if (opcode < RANDOMX_FREQ_IROR_R + RANDOMX_FREQ_IROL_R)
 			{
+#if RANDOMX_PROGRAM_SIZE > 256
+				registerLastChanged[dst] = i;
+#else
 				registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 				registerWasChanged |= 1u << dst;
+#endif
 				continue;
 			}
 			opcode -= RANDOMX_FREQ_IROR_R + RANDOMX_FREQ_IROL_R;
@@ -1167,9 +1242,14 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 			{
 				if (src != dst)
 				{
+#if RANDOMX_PROGRAM_SIZE > 256
+					registerLastChanged[dst] = i;
+					registerLastChanged[src] = i;
+#else
 					registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 					registerLastChanged = (registerLastChanged & ~(0xFFul << (src * 8))) | ((ulong)(i) << (src * 8));
 					registerWasChanged |= (1u << dst) | (1u << src);
+#endif
 				}
 				continue;
 			}
@@ -1234,20 +1314,38 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 					e[i].x |= (0x40 << 8);
 
 					// Set all registers as changed at this instruction as per RandomX specification
+#if RANDOMX_PROGRAM_SIZE > 256
+					#pragma unroll
+					for (int j = 0; j < 8; ++j)
+						registerLastChanged[j] = i;
+#else
 					uint t = i | (i << 8);
 					t = t | (t << 16);
 					registerLastChanged = t;
 					registerLastChanged = registerLastChanged | (registerLastChanged << 32);
 					registerWasChanged = 0xFF;
+#endif
 				}
 				else
 				{
 					// Update only registers which really changed inside this branch
+#if RANDOMX_PROGRAM_SIZE > 256
+					registerLastChanged[dst] = i;
+#else
 					registerLastChanged = (registerLastChanged & ~(0xFFul << (dst * 8))) | ((ulong)(i) << (dst * 8));
 					registerWasChanged |= 1u << dst;
+#endif
 
 					for (int reg = 0; reg < 8; ++reg)
 					{
+#if RANDOMX_PROGRAM_SIZE > 256
+						const uint availableAtBranchTarget = registerLastChangedAtBranchTarget[reg] + 1;
+						const uint availableAt = registerLastChanged[reg] + 1;
+						if (availableAt != availableAtBranchTarget)
+						{
+							registerLastChanged[reg] = i;
+						}
+#else
 						const uint availableAtBranchTarget = (registerWasChangedAtBranchTarget & (1u << reg)) ? (((registerLastChangedAtBranchTarget >> (reg * 8)) & 0xFF) + 1) : 0;
 						const uint availableAt = (registerWasChanged & (1u << reg)) ? (((registerLastChanged >> (reg * 8)) & 0xFF) + 1) : 0;
 						if (availableAt != availableAtBranchTarget)
@@ -1255,6 +1353,7 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 							registerLastChanged = (registerLastChanged & ~(0xFFul << (reg * 8))) | ((ulong)(i) << (reg * 8));
 							registerWasChanged |= 1u << reg;
 						}
+#endif
 					}
 
 					if (scratchpadAvailableAtBranchTarget != scratchpadAvailableAt)

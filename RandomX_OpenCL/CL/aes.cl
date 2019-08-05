@@ -566,7 +566,7 @@ uint get_byte(uint a, uint start_bit) { return (a >> start_bit) & 0xFF; }
 #undef fillAes_name
 
 #define fillAes_name fillAes4Rx4_entropy
-#define outputSize (128 + 2048)
+#define outputSize ENTROPY_SIZE
 #define outputSize0 outputSize
 #define strided 0
 #define unroll_factor 2
