@@ -78,14 +78,14 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 
 		std::stringstream options;
 		options << "-D WORKERS_PER_HASH=" << workers_per_hash << (high_precision ? " -D HIGH_PRECISION" : "") << " -Werror";
-		if (!ctx.Compile("randomx_vm.bin", { RANDOMX_VM_CL }, { CL_INIT_VM, CL_EXECUTE_VM }, options.str(), ALWAYS_COMPILE))
+		if (!ctx.Compile("randomx_vm.bin", { RANDOMX_VM_CL }, { CL_INIT_VM, CL_EXECUTE_VM }, options.str(), COMPILE_CACHE_BINARY))
 		{
 			return false;
 		}
 	}
 	else
 	{
-		if (!ctx.Compile("randomx_init.bin", { RANDOMX_INIT_CL }, { CL_RANDOMX_INIT }, "", ALWAYS_COMPILE))
+		if (!ctx.Compile("randomx_init.bin", { RANDOMX_INIT_CL }, { CL_RANDOMX_INIT }, "", COMPILE_CACHE_BINARY))
 		{
 			return false;
 		}
@@ -248,7 +248,14 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 		}
 
 		kernel_randomx_run = ctx.kernels[CL_RANDOMX_RUN];
-		if (!clSetKernelArgs(kernel_randomx_run, dataset_gpu, scratchpads_gpu, vm_states_gpu, rounding_gpu, compiled_programs_gpu, static_cast<uint32_t>(intensity)))
+
+		constexpr uint32_t rx_parameters =
+			(PowerOf2(RANDOMX_SCRATCHPAD_L1) << 0) |
+			(PowerOf2(RANDOMX_SCRATCHPAD_L2) << 5) |
+			(PowerOf2(RANDOMX_SCRATCHPAD_L3) << 10) |
+			(PowerOf2(RANDOMX_PROGRAM_ITERATIONS) << 15);
+
+		if (!clSetKernelArgs(kernel_randomx_run, dataset_gpu, scratchpads_gpu, vm_states_gpu, rounding_gpu, compiled_programs_gpu, static_cast<uint32_t>(intensity), rx_parameters))
 		{
 			return false;
 		}

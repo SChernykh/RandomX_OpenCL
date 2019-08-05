@@ -19,11 +19,10 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include "randomx_constants.h"
+#include "randomx_constants_jit.h"
 
 #define REGISTERS_COUNT (REGISTERS_SIZE / 8)
 #define SCRATCHPAD_STRIDE_SIZE 64
-
-#define ScratchpadL3Mask64 ((1 << 21) - 64)
 
 #define CacheLineSize 64U
 #define CacheLineAlignMask ((1U << 31) - 1) & ~(CacheLineSize - 1)
@@ -42,7 +41,7 @@ double load_F_E_groups(int value, ulong andMask, ulong orMask)
 
 // This kernel is only used to dump binary and disassemble it into randomx_run.asm
 __attribute__((reqd_work_group_size(LOCAL_GROUP_SIZE, 1, 1)))
-__kernel void randomx_run(__global const uchar* dataset, __global uchar* scratchpad, __global ulong* registers, __global uint* rounding_modes, __global uint* programs, uint batch_size)
+__kernel void randomx_run(__global const uchar* dataset, __global uchar* scratchpad, __global ulong* registers, __global uint* rounding_modes, __global uint* programs, uint batch_size, uint rx_parameters)
 {
 	__local ulong2 R_buf[REGISTERS_COUNT * HASHES_PER_GROUP / 2];
 
@@ -50,13 +49,17 @@ __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratch
 	const uint idx = global_index / WORKERS_PER_HASH;
 	const uint sub = global_index % WORKERS_PER_HASH;
 
+	const uint program_iterations = rx_parameters >> 15;
+	const uint ScratchpadL3Size = (rx_parameters >> 10) & 31;
+	const uint ScratchpadL3Mask64 = ScratchpadL3Size - 64;
+
 	__local ulong* R = (__local ulong*)((__local uchar*)(R_buf) + (get_local_id(0) / WORKERS_PER_HASH) * REGISTERS_COUNT * sizeof(ulong));
 
 	__local double* F = (__local double*)(R + 8);
 	__local double* E = (__local double*)(R + 16);
 
 	registers += idx * REGISTERS_COUNT;
-	scratchpad += idx * (ulong)(SCRATCHPAD_STRIDED ? SCRATCHPAD_STRIDE_SIZE : (SCRATCHPAD_SIZE + 64));
+	scratchpad += idx * (ulong)(SCRATCHPAD_STRIDED ? SCRATCHPAD_STRIDE_SIZE : (ScratchpadL3Size + 64));
 	rounding_modes += idx;
 	programs += get_group_id(0) * (COMPILED_PROGRAM_SIZE / sizeof(uint));
 
@@ -89,7 +92,7 @@ __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratch
 	const ulong orMask2 = f_group ? 0 : R[21];
 
 	#pragma unroll(1)
-	for (uint ic = 0; ic < RANDOMX_PROGRAM_ITERATIONS; ++ic)
+	for (uint ic = 0; ic < program_iterations; ++ic)
 	{
 		const uint2 spMix = as_uint2(R[readReg0] ^ R[readReg1]);
 		spAddr0 ^= spMix.x;

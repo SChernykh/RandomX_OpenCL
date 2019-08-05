@@ -5,7 +5,7 @@
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <LocalDebuggerCommandArguments>--mine --validate --portable --workers 8 --bfactor 5 --fast_fp --intensity 3584</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>--mine --validate --intensity 1984</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
 </Project>

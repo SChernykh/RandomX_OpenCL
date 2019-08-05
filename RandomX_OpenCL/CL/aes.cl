@@ -552,7 +552,7 @@ uint get_byte(uint a, uint start_bit) { return (a >> start_bit) & 0xFF; }
 #include "randomx_constants.h"
 
 #define fillAes_name fillAes1Rx4_scratchpad
-#define outputSize 2097152
+#define outputSize RANDOMX_SCRATCHPAD_L3
 #define outputSize0 (outputSize + 64)
 #define strided SCRATCHPAD_STRIDED
 #define unroll_factor 8
@@ -579,7 +579,7 @@ uint get_byte(uint a, uint start_bit) { return (a >> start_bit) & 0xFF; }
 #undef outputSize0
 #undef fillAes_name
 
-#define inputSize 2097152
+#define inputSize RANDOMX_SCRATCHPAD_L3
 
 __attribute__((reqd_work_group_size(64, 1, 1)))
 __kernel void hashAes1Rx4(__global const void* input, __global void* hash, uint hashOffsetBytes, uint hashStrideBytes, uint batch_size)

@@ -27,6 +27,8 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #include <vector>
 #include <CL/cl.h>
 
+constexpr uint32_t PowerOf2(size_t value) { return (value <= 1) ? 0U : PowerOf2(value / 2) + 1U; }
+
 #define STR(X) #X
 #define STR2(X) STR(X)
 

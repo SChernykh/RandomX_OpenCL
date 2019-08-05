@@ -55,6 +55,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		.arg rounding_modes, "uint*", uint*, global,
 		.arg programs, "uint*", uint*, global, 
 		.arg batch_size, "uint", uint
+		.arg rx_parameters, "uint", uint
 	.text
 		s_dcache_wb
 		s_waitcnt       vmcnt(0) & lgkmcnt(0)
@@ -108,8 +109,28 @@ begin:
 		v_cmpx_le_u32   s[2:3], v1, 7
 		s_cbranch_execz program_end
 
+		# rx_parameters
+		s_load_dword    s20, s[4:5], 0x5c
+		s_waitcnt       lgkmcnt(0)
+
+		# Scratchpad L1 size
+		s_bfe_u32       s21, s20, 0x050000
+		s_lshl_b32      s21, 1, s21
+
+		# Scratchpad L2 size
+		s_bfe_u32       s22, s20, 0x050005
+		s_lshl_b32      s22, 1, s22
+
+		# Scratchpad L3 size
+		s_bfe_u32       s23, s20, 0x05000A
+		s_lshl_b32      s23, 1, s23
+
+		# program iterations
+		s_bfe_u32       s24, s20, 0x04000F
+		s_lshl_b32      s24, 1, s24
+
 		# Base address for non-strided scratchpads
-		s_mov_b32       s2, 2097152 + 64
+		s_add_u32       s2, s23, 64
 		v_mul_hi_u32    v20, v2, s2
 		v_mul_lo_u32    v2, v2, s2
 
@@ -173,20 +194,20 @@ begin:
 		v_mov_b32       v23, v37
 
 		# loop counter
-		s_movk_i32      s2, 2048 - 1
+		s_sub_u32       s2, s24, 1
 
 		# batch_size
 		s_mov_b32       s3, s16
 
 		# Scratchpad masks for strided scratchpads
-		#v_mov_b32       v38, 16320
-		#v_mov_b32       v39, 262080
-		#v_mov_b32       v50, 2097088
+		#v_sub_u32       v38, s21, 64
+		#v_sub_u32       v39, s22, 64
+		#v_sub_i32       v50, s23, 64
 
 		# Scratchpad masks for non-strided scratchpads
-		v_mov_b32       v38, 16376
-		v_mov_b32       v39, 262136
-		v_mov_b32       v50, 2097144
+		v_sub_u32       v38, s21, 8
+		v_sub_u32       v39, s22, 8
+		v_sub_i32       v50, s23, 8
 
 		# mask for FSCAL_R
 		v_mov_b32       v51, 0x80F00000
@@ -280,6 +301,9 @@ cur_addr:
 		s_mov_b32       s84, (0xFF << 22)
 		s_mov_b32       s85, (0xFF << 23)
 
+		# ScratchpadL3Mask64
+		s_sub_u32       s86, s23, 64
+
 main_loop:
 		# const uint2 spMix = as_uint2(R[readReg0] ^ R[readReg1]);
 		ds_read_b64     v[24:25], v0
@@ -295,8 +319,8 @@ main_loop:
 
 		# spAddr1 &= ScratchpadL3Mask64;
 		# spAddr0 &= ScratchpadL3Mask64;
-		v_and_b32       v10, 0x1fffc0, v10
-		v_and_b32       v23, 0x1fffc0, v23
+		v_and_b32       v10, s86, v10
+		v_and_b32       v23, s86, v23
 
 		# Offset for non-strided scratchpads
 		# offset1 = spAddr1 + sub * 8

@@ -40,7 +40,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #define ScratchpadL2Mask_reg 39
 #define ScratchpadL3Mask_reg 50
 
-#define ScratchpadL3Mask 2097144
+#define ScratchpadL3Mask (RANDOMX_SCRATCHPAD_L3 - 8)
 
 #define RANDOMX_JUMP_BITS          8
 #define RANDOMX_JUMP_OFFSET        8
@@ -960,7 +960,7 @@ int jit_prefetch_read(
 	const int lastBranch)
 {
 	uint2 t;
-	t.x = (src == dst) ? (((inst.y & ScratchpadL3Mask) >= 262144) ? scratchpadHighAvailableAt : scratchpadAvailableAt) : max(scratchpadAvailableAt, srcAvailableAt);
+	t.x = (src == dst) ? (((inst.y & ScratchpadL3Mask) >= RANDOMX_SCRATCHPAD_L2) ? scratchpadHighAvailableAt : scratchpadAvailableAt) : max(scratchpadAvailableAt, srcAvailableAt);
 	t.y = i;
 
 	const int t1 = t.x;
