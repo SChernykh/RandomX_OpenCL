@@ -130,8 +130,8 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 		char* dataset_memory = reinterpret_cast<char*>(randomx_get_dataset_memory(myDataset));
 		bool read_ok = false;
 
-		FILE* fp;
-		if (fp = fopen("dataset.bin", "rb"))
+		FILE* fp = fopen("dataset.bin", "rb");
+		if (fp)
 		{
 			read_ok = (fread(dataset_memory, 1, randomx::DatasetSize, fp) == randomx::DatasetSize);
 			fclose(fp);
@@ -159,7 +159,8 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 
 			randomx_release_cache(myCache);
 
-			if (fp = fopen("dataset.bin", "wb"))
+			fp = fopen("dataset.bin", "wb");
+			if (fp)
 			{
 				fwrite(dataset_memory, 1, randomx::DatasetSize, fp);
 				fclose(fp);
