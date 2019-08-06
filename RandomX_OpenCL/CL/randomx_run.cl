@@ -49,8 +49,8 @@ __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratch
 	const uint idx = global_index / WORKERS_PER_HASH;
 	const uint sub = global_index % WORKERS_PER_HASH;
 
-	const uint program_iterations = rx_parameters >> 15;
-	const uint ScratchpadL3Size = (rx_parameters >> 10) & 31;
+	const uint program_iterations = 1U << (rx_parameters >> 15);
+	const uint ScratchpadL3Size = 1U << ((rx_parameters >> 10) & 31);
 	const uint ScratchpadL3Mask64 = ScratchpadL3Size - 64;
 
 	__local ulong* R = (__local ulong*)((__local uchar*)(R_buf) + (get_local_id(0) / WORKERS_PER_HASH) * REGISTERS_COUNT * sizeof(ulong));
