@@ -21,6 +21,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 
 #include <iostream>
 #include <stdint.h>
+#include <cstring>
 #include <string>
 #include <thread>
 #include <map>
