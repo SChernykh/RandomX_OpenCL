@@ -19,6 +19,22 @@ GeForce GTX 1080 Ti (2037/11800 MHz)|927|601|64.8%|VM interpreted mode
 - Add CLRadeonExtender's bin directory to PATH environment variable
 - Open .sln file in Visual Studio and build it
 
+## Building on Ubuntu
+
+- Install prerequisites `sudo apt install git cmake build-essential`
+- If you want to try JIT compiled code for Vega, install amdgpu-pro drivers with OpenCL enabled (run the install script like this `./amdgpu-pro-install --opencl=pal`)
+- Download [CLRadeonExtender](https://github.com/CLRX/CLRX-mirror/releases) and copy `clrxasm` to `/usr/local/bin`
+- Then run commands:
+```
+git clone --recursive https://github.com/SChernykh/RandomX_OpenCL
+cd RandomX_OpenCL/RandomX
+mkdir build && cd build
+cmake -DARCH=native ..
+make
+cd ../../RandomX_OpenCL
+make
+```
+
 ## Donations
 
 If you'd like to support further development/optimization of RandomX miners (both CPU and AMD/NVIDIA), you're welcome to send any amount of XMR to the following address:
