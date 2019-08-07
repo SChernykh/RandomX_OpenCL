@@ -37,7 +37,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		.vgprsnum 128
 		.localsize 256
 		.floatmode 0xc0
-		.pgmrsrc1 0x00ac0049
+		.pgmrsrc1 0x00ac035f
 		.pgmrsrc2 0x00000090
 		.dx10clamp
 		.ieeemode
