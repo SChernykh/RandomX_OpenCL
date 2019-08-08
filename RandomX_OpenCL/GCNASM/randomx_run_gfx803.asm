@@ -66,8 +66,8 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		# s8 contains group id
 		# v0 contains local id
 begin:
-		v_lshlrev_b32    v1, 6, s8
-		v_add_u32        v1, vcc, v1, v0
+		v_lshlrev_b32   v1, 6, s8
+		v_add_u32       v1, vcc, v1, v0
 		s_load_dwordx2  s[0:1], s[4:5], 0x0
 		s_load_dwordx2  s[2:3], s[4:5], 0x40
 		s_load_dwordx2  s[64:65], s[4:5], 0x48
@@ -209,12 +209,12 @@ begin:
 		# Scratchpad masks for strided scratchpads
 		#v_sub_u32       v38, s21, 64
 		#v_sub_u32       v39, s22, 64
-		#v_sub_i32       v50, s23, 64
+		#v_sub_u32       v50, s23, 64
 
 		# Scratchpad masks for non-strided scratchpads
 		v_sub_u32       v38, vcc, s21, 8
 		v_sub_u32       v39, vcc, s22, 8
-		v_sub_i32       v50, vcc, s23, 8
+		v_sub_u32       v50, vcc, s23, 8
 
 		# mask for FSCAL_R
 		v_mov_b32       v51, 0x80F00000
