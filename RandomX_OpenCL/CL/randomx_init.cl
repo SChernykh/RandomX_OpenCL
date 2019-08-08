@@ -21,6 +21,8 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #include "randomx_constants.h"
 #include "randomx_constants_jit.h"
 
+#define GCN_VERSION 12
+
 #define mantissaSize 52
 #define exponentSize 11
 #define mantissaMask ((1UL << mantissaSize) - 1)
@@ -45,92 +47,35 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #define RANDOMX_JUMP_BITS          8
 #define RANDOMX_JUMP_OFFSET        8
 
-// 12.5*25 = 312.5 bytes on average
-#define RANDOMX_FREQ_IADD_RS       25
-
-// 47.5*7 = 332.5 bytes on average
-#define RANDOMX_FREQ_IADD_M         7
-
-// 8.5*16 = 136 bytes on average
-#define RANDOMX_FREQ_ISUB_R        16
-
-// 47.5*7 = 332.5 bytes on average
-#define RANDOMX_FREQ_ISUB_M         7
-
-// 24.75*16 = 396 bytes on average
-#define RANDOMX_FREQ_IMUL_R        16
-
-// 63.5*4 = 254 bytes on average
-#define RANDOMX_FREQ_IMUL_M         4
-
-// 16*4 = 64 bytes
-#define RANDOMX_FREQ_IMULH_R        4
-
-// 51.5*1 = 51.5 bytes on average
-#define RANDOMX_FREQ_IMULH_M        1
-
-// 16*4 = 64 bytes
-#define RANDOMX_FREQ_ISMULH_R       4
-
-// 51.5*1 = 51.5 bytes on average
-#define RANDOMX_FREQ_ISMULH_M       1
-
-// 36*8 = 288 bytes
-#define RANDOMX_FREQ_IMUL_RCP       8
-
-// 8*2 = 16 bytes
-#define RANDOMX_FREQ_INEG_R         2
-
-// 4.75*15 = 71.25 bytes
-#define RANDOMX_FREQ_IXOR_R        15
-
-// 43.5*5 = 217.5 bytes on average
-#define RANDOMX_FREQ_IXOR_M         5
-
-// 15.5*8 = 124 bytes on average
-#define RANDOMX_FREQ_IROR_R         8
-
-// 15.5*2 = 31 bytes on average
-#define RANDOMX_FREQ_IROL_R         2
-
-// 10.5*4 = 42 bytes on average
-#define RANDOMX_FREQ_ISWAP_R        4
-
-// 20*4 = 80 bytes
-#define RANDOMX_FREQ_FSWAP_R        4
-
-// 8*16 = 128 bytes
-#define RANDOMX_FREQ_FADD_R        16
-
-// 40*5 = 200 bytes
-#define RANDOMX_FREQ_FADD_M         5
-
-// 8*16 = 128 bytes
-#define RANDOMX_FREQ_FSUB_R        16
-
-// 40*5 = 200 bytes
-#define RANDOMX_FREQ_FSUB_M         5
-
-// 4*6 = 24 bytes
-#define RANDOMX_FREQ_FSCAL_R        6
-
-// 8*32 = 256 bytes
-#define RANDOMX_FREQ_FMUL_R        32
-
-// 36*4 = 144 bytes
-#define RANDOMX_FREQ_FDIV_M         4
-
-// 4*6 = 24 bytes
-#define RANDOMX_FREQ_FSQRT_R        6
-
-// 20*16 = 320 bytes
-#define RANDOMX_FREQ_CBRANCH       16
-
-// 20*1 = 20 bytes
-#define RANDOMX_FREQ_CFROUND        1
-
-// 28*16 = 448 bytes
-#define RANDOMX_FREQ_ISTORE        16
+// RANDOMX_FREQ_IADD_RS				12.5*25 = 312.5 bytes on average
+// RANDOMX_FREQ_IADD_M				47.5*7 = 332.5 bytes on average
+// RANDOMX_FREQ_ISUB_R				8.5*16 = 136 bytes on average
+// RANDOMX_FREQ_ISUB_M				47.5*7 = 332.5 bytes on average
+// RANDOMX_FREQ_IMUL_R				24.75*16 = 396 bytes on average
+// RANDOMX_FREQ_IMUL_M				63.5*4 = 254 bytes on average
+// RANDOMX_FREQ_IMULH_R				16*4 = 64 bytes
+// RANDOMX_FREQ_IMULH_M				51.5*1 = 51.5 bytes on average
+// RANDOMX_FREQ_ISMULH_R			16*4 = 64 bytes
+// RANDOMX_FREQ_ISMULH_M			51.5*1 = 51.5 bytes on average
+// RANDOMX_FREQ_IMUL_RCP			36*8 = 288 bytes
+// RANDOMX_FREQ_INEG_R				8*2 = 16 bytes
+// RANDOMX_FREQ_IXOR_R				4.75*15 = 71.25 bytes
+// RANDOMX_FREQ_IXOR_M				43.5*5 = 217.5 bytes on average
+// RANDOMX_FREQ_IROR_R				15.5*8 = 124 bytes on average
+// RANDOMX_FREQ_IROL_R				15.5*2 = 31 bytes on average
+// RANDOMX_FREQ_ISWAP_R				10.5*4 = 42 bytes on average
+// RANDOMX_FREQ_FSWAP_R				20*4 = 80 bytes
+// RANDOMX_FREQ_FADD_R				8*16 = 128 bytes
+// RANDOMX_FREQ_FADD_M				40*5 = 200 bytes
+// RANDOMX_FREQ_FSUB_R				8*16 = 128 bytes
+// RANDOMX_FREQ_FSUB_M				40*5 = 200 bytes
+// RANDOMX_FREQ_FSCAL_R				4*6 = 24 bytes
+// RANDOMX_FREQ_FMUL_R				8*32 = 256 bytes
+// RANDOMX_FREQ_FDIV_M				36*4 = 144 bytes
+// RANDOMX_FREQ_FSQRT_R				4*6 = 24 bytes
+// RANDOMX_FREQ_CBRANCH				20*16 = 320 bytes
+// RANDOMX_FREQ_CFROUND				20*1 = 20 bytes
+// RANDOMX_FREQ_ISTORE				28*16 = 448 bytes
 
 // Total: 4756.25 + 4(s_setpc_b64) = 4760.25 bytes on average
 // Real average program size: 4743 bytes
@@ -198,9 +143,18 @@ __global uint* jit_scratchpad_calc_fixed_address(__global uint* p, uint imm32, u
 __global uint* jit_scratchpad_load(__global uint* p, uint lane_index, uint vgpr_index)
 {
 	// v28 = offset
+
+#if GCN_VERSION >= 14
 	// global_load_dwordx2 v[vgpr_index:vgpr_index+1], v28, s[0:1]
 	*(p++) = 0xdc548000u;
 	*(p++) = 0x0000001cu | (vgpr_index << 24);
+#else
+	*(p++) = 0x32003902u | (vgpr_index << 17);				// v_add_u32 v[vgpr_index], vcc, v2, v28
+	*(p++) = 0xd11c6a00u | (vgpr_index + 1);				// v_addc_u32 v[vgpr_index + 1], vcc, v3, 0, vcc
+	*(p++) = 0x01a90103u;
+	*(p++) = 0xdc540000u;									// flat_load_dwordx2 v[vgpr_index:vgpr_index+1], v[vgpr_index:vgpr_index+1]
+	*(p++) = 0x00000000u | vgpr_index | (vgpr_index << 24);
+#endif
 
 	return p;
 }
@@ -242,8 +196,13 @@ __global uint* jit_scratchpad_calc_address_fp(__global uint* p, uint src, uint i
 	*(p++) = 0x0474071cu;
 #endif
 
+#if GCN_VERSION >= 14
 	// v_add_u32 v28, v28, v44
 	*(p++) = 0x6838591cu;
+#else
+	// v_add_u32 v28, vcc, v28, v44
+	*(p++) = 0x3238591cu;
+#endif
 
 	return p;
 }
@@ -251,9 +210,18 @@ __global uint* jit_scratchpad_calc_address_fp(__global uint* p, uint src, uint i
 __global uint* jit_scratchpad_load_fp(__global uint* p, uint lane_index, uint vgpr_index)
 {
 	// v28 = offset
+
+#if GCN_VERSION >= 14
 	// global_load_dword v(vgpr_index), v28, s[0:1]
 	*(p++) = 0xdc508000u;
 	*(p++) = 0x0000001cu | (vgpr_index << 24);
+#else
+	*(p++) = 0x32543902u;						// v_add_u32 v42, vcc, v2, v28
+	*(p++) = 0xd11c6a2bu;						// v_addc_u32 v43, vcc, v3, 0, vcc
+	*(p++) = 0x01a90103u;
+	*(p++) = 0xdc500000u;						// flat_load_dword v(vgpr_index), v[42:43]
+	*(p++) = 0x0000002au | (vgpr_index << 24);
+#endif
 
 	return p;
 }
@@ -419,8 +387,19 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 	{
 		if (src != dst) // p = 7/8
 		{
+#if GCN_VERSION >= 14
 			// s_mul_hi_u32 s15, s(16 + dst * 2), s(16 + src * 2)
 			*(p++) = 0x960f1010u | (dst << 1) | (src << 9);
+#else
+			// v_mov_b32 v28, s(16 + dst * 2)
+			*(p++) = 0x7e380210u | (dst << 1);
+			// v_mul_hi_u32 v28, v28, s(16 + src * 2)
+			*(p++) = 0xd286001cu;
+			*(p++) = 0x0000211cu + (src << 10);
+			// v_readlane_b32 s15, v28, 0
+			*(p++) = 0xd289000fu;
+			*(p++) = 0x0001011cu;
+#endif
 
 			// s_mul_i32 s14, s(16 + dst * 2), s(17 + src * 2)
 			*(p++) = 0x920e1110u | (dst << 1) | (src << 9);
@@ -439,9 +418,21 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		}
 		else // p = 1/8
 		{
+#if GCN_VERSION >= 14
 			// s_mul_hi_u32 s15, s(16 + dst * 2), imm32
 			*(p++) = 0x960fff10u | (dst << 1);
 			*(p++) = inst.y;
+#else
+			// v_mov_b32 v28, imm32
+			*(p++) = 0x7e3802ffu;
+			*(p++) = inst.y;
+			// v_mul_hi_u32 v28, v28, s(16 + dst * 2)
+			*(p++) = 0xd286001cu;
+			*(p++) = 0x0000211cu + (dst << 10);
+			// v_readlane_b32 s15, v28, 0
+			*(p++) = 0xd289000fu;
+			*(p++) = 0x0001011cu;
+#endif
 
 			if (as_int(inst.y) < 0) // p = 1/2
 			{
@@ -482,8 +473,19 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		{
 			p = jit_scratchpad_load2(p, lane_index, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
 
+#if GCN_VERSION >= 14
 			// s_mul_hi_u32 s33, s(16 + dst * 2), s14
 			*(p++) = 0x96210e10u | (dst << 1);
+#else
+			// v_mov_b32 v28, s(16 + dst * 2)
+			*(p++) = 0x7e380210u | (dst << 1);
+			// v_mul_hi_u32 v28, v28, s14
+			*(p++) = 0xd286001cu;
+			*(p++) = 0x00001d1cu;
+			// v_readlane_b32 s33, v28, 0
+			*(p++) = 0xd2890021u;
+			*(p++) = 0x0001011cu;
+#endif
 
 			// s_mul_i32 s32, s(16 + dst * 2), s15
 			*(p++) = 0x92200f10u | (dst << 1);
@@ -590,7 +592,18 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 
 			*(p++) = 0xbea000ffu;							// s_mov_b32       s32, imm32
 			*(p++) = rcp_value.x;
+#if GCN_VERSION >= 14
 			*(p++) = 0x960f2010u | (dst << 1);				// s_mul_hi_u32    s15, s(16 + dst * 2), s32
+#else
+			// v_mov_b32 v28, s32
+			*(p++) = 0x7e380220u;
+			// v_mul_hi_u32 v28, v28, s(16 + dst * 2)
+			*(p++) = 0xd286001cu;
+			*(p++) = 0x0000211cu + (dst << 10);
+			// v_readlane_b32 s15, v28, 0
+			*(p++) = 0xd289000fu;
+			*(p++) = 0x0001011cu;
+#endif
 			*(p++) = 0x920eff10u | (dst << 1);				// s_mul_i32       s14, s(16 + dst * 2), imm32
 			*(p++) = rcp_value.y;
 			*(p++) = 0x800f0e0fu;							// s_add_u32       s15, s15, s14
@@ -934,9 +947,20 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		*(p++) = 0x7e020211u | (src << 1) | (vgpr_id << 17);	// v_mov_b32       vgpr_id + 1, s(17 + src * 2)
 
 		// v28 = offset
+
+#if GCN_VERSION >= 14
 		// global_store_dwordx2 v28, v[vgpr_id:vgpr_id + 1], s[0:1]
 		*(p++) = 0xdc748000u;
 		*(p++) = 0x0000001cu | (vgpr_id << 8);
+#else
+		// v_add_u32 v28, vcc, v28, v2
+		*(p++) = 0x3238051cu;
+		// v_addc_u32 v29, vcc, 0, v3, vcc
+		*(p++) = 0x383a0680u;
+		// flat_store_dwordx2 v[28:29], v[vgpr_id:vgpr_id + 1]
+		*(p++) = 0xdc740000u;
+		*(p++) = 0x0000001cu | (vgpr_id << 8);
+#endif
 
 		// 28 bytes
 		return p;

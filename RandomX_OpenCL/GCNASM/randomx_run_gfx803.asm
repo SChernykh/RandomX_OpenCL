@@ -22,7 +22,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 .64bit
 .arch_minor 0
 .arch_stepping 0
-.driver_version 200406
+.driver_version 203603
 .kernel randomx_run
 	.config
 		.dims x
@@ -38,7 +38,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		.localsize 256
 		.floatmode 0xc0
 		.pgmrsrc1 0x00ac035f
-		.pgmrsrc2 0x00000090
+		.pgmrsrc2 0x0000008c
 		.dx10clamp
 		.ieeemode
 		.useargs
@@ -57,6 +57,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		.arg batch_size, "uint", uint
 		.arg rx_parameters, "uint", uint
 	.text
+		s_mov_b32       m0, 0x10000
 		s_dcache_wb
 		s_waitcnt       vmcnt(0) & lgkmcnt(0)
 		s_icache_inv
@@ -66,6 +67,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		# s8 contains group id
 		# v0 contains local id
 begin:
+		s_mov_b32 s8, s6
 		v_lshlrev_b32   v1, 6, s8
 		v_add_u32       v1, vcc, v1, v0
 		s_load_dwordx2  s[0:1], s[4:5], 0x0
@@ -219,9 +221,14 @@ begin:
 		# mask for FSCAL_R
 		v_mov_b32       v51, 0x80F00000
 
+		# swap v3 and v18
+		v_mov_b32       v52, v3
+		v_mov_b32       v3, v18
+		v_mov_b32       v18, v52
+
 		# load scratchpad base address
 		v_readlane_b32	s0, v2, 0
-		v_readlane_b32	s1, v18, 0
+		v_readlane_b32	s1, v3, 0
 
 		# save current executiom mask
 		s_mov_b64       s[36:37], exec
@@ -344,9 +351,9 @@ main_loop:
 		# __global ulong* p1 = (__global ulong*)(scratchpad + offset1);
 		# __global ulong* p0 = (__global ulong*)(scratchpad + offset0);
 		v_add_u32       v26, vcc, v2, v10
-		v_addc_u32      v27, vcc, v18, 0, vcc
+		v_addc_u32      v27, vcc, v3, 0, vcc
 		v_add_u32       v23, vcc, v2, v23
-		v_addc_u32      v24, vcc, v18, 0, vcc
+		v_addc_u32      v24, vcc, v3, 0, vcc
 
 		# load from spAddr1
 		flat_load_dwordx2 v[28:29], v[26:27]
@@ -467,7 +474,7 @@ main_loop:
 		s_branch        main_loop
 main_loop_end:
 
-		v_add_u32       v0, vcc, v3, v1
+		v_add_u32       v0, vcc, v18, v1
 		v_addc_u32      v1, vcc, v4, 0, vcc
 		flat_store_dwordx2 v[0:1], v[21:22]
 		v_add_u32       v0, vcc, v0, 64
