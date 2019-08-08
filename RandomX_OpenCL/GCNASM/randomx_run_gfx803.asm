@@ -77,8 +77,11 @@ begin:
 		s_lshl_b32      s16, s8, 2
 		s_add_u32       s64, s64, s16
 		s_addc_u32      s65, s65, 0
-		s_load_dword    s66, s[64:65], 0x0
-		s_waitcnt       lgkmcnt(0)
+		v_mov_b32       v8, s64
+		v_mov_b32       v9, s65
+		flat_load_dword v8, v[8:9]
+		s_waitcnt       vmcnt(0)
+		v_readlane_b32  s66, v8, 0
 		s_setreg_b32    hwreg(mode, 2, 2), s66
 		s_mov_b32       s67, 0
 
@@ -475,7 +478,10 @@ main_loop_end:
 		flat_store_dwordx2 v[0:1], v[32:33]
 
 		# store rounding mode
-		s_store_dword   s66, s[64:65], 0
+		v_mov_b32       v0, s64
+		v_mov_b32       v1, s65
+		v_mov_b32       v2, s66
+		flat_store_dword v[0:1], v2
 
 program_end:
 		s_endpgm

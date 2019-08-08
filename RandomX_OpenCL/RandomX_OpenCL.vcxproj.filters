@@ -72,6 +72,9 @@
     <None Include="CL\randomx_vm.cl">
       <Filter>Source Files\CL</Filter>
     </None>
+    <None Include="GCNASM\randomx_run_gfx803.asm">
+      <Filter>Source Files\GCNASM</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="GCNASM\randomx_run.asm">
