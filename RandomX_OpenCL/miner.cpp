@@ -85,14 +85,14 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 	}
 	else
 	{
-		if (!ctx.Compile("randomx_init.bin", { RANDOMX_INIT_CL }, { CL_RANDOMX_INIT }, "", COMPILE_CACHE_BINARY))
+		if (!ctx.Compile("randomx_init.bin", { RANDOMX_INIT_CL }, { CL_RANDOMX_INIT }, "", ALWAYS_COMPILE))
 		{
 			return false;
 		}
 
 		std::stringstream options;
 		options << "-D RANDOMX_PROGRAM_ITERATIONS=" << RANDOMX_PROGRAM_ITERATIONS;
-		if (!ctx.Compile("randomx_run.bin", { RANDOMX_RUN_CL }, { CL_RANDOMX_RUN }, options.str(), ALWAYS_USE_BINARY))
+		if (!ctx.Compile("randomx_run_gfx803.bin", { RANDOMX_RUN_CL }, { CL_RANDOMX_RUN }, options.str(), ALWAYS_USE_BINARY))
 		{
 			return false;
 		}
@@ -398,6 +398,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 				//	fclose(fp);
 				//	return false;
 				//}
+				CL_CHECKED_CALL(clFinish, ctx.queue);
 				CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_run, 1, nullptr, &global_work_size64, &local_work_size, 0, nullptr, nullptr);
 			}
 

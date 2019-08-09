@@ -149,11 +149,11 @@ __global uint* jit_scratchpad_load(__global uint* p, uint lane_index, uint vgpr_
 	*(p++) = 0xdc548000u;
 	*(p++) = 0x0000001cu | (vgpr_index << 24);
 #else
-	*(p++) = 0x32003902u | (vgpr_index << 17);				// v_add_u32 v[vgpr_index], vcc, v2, v28
-	*(p++) = 0xd11c6a00u | (vgpr_index + 1);				// v_addc_u32 v[vgpr_index + 1], vcc, v3, 0, vcc
+	*(p++) = 0x32543902u;						// v_add_u32 v42, vcc, v2, v28
+	*(p++) = 0xd11c6a2bu;						// v_addc_u32 v43, vcc, v3, 0, vcc
 	*(p++) = 0x01a90103u;
-	*(p++) = 0xdc540000u;									// flat_load_dwordx2 v[vgpr_index:vgpr_index+1], v[vgpr_index:vgpr_index+1]
-	*(p++) = 0x00000000u | vgpr_index | (vgpr_index << 24);
+	*(p++) = 0xdc540000u;						// flat_load_dwordx2 v[vgpr_index:vgpr_index+1], v[42:43]
+	*(p++) = 0x0000002au | (vgpr_index << 24);
 #endif
 
 	return p;
