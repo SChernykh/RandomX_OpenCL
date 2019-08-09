@@ -57,6 +57,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		.arg batch_size, "uint", uint
 		.arg rx_parameters, "uint", uint
 	.text
+		s_mov_b32       m0, 0x10000
 		s_dcache_wb
 		s_waitcnt       vmcnt(0) & lgkmcnt(0)
 		s_icache_inv
@@ -202,12 +203,12 @@ begin:
 		# Scratchpad masks for strided scratchpads
 		#v_sub_u32       v38, s21, 64
 		#v_sub_u32       v39, s22, 64
-		#v_sub_i32       v50, s23, 64
+		#v_sub_u32       v50, s23, 64
 
 		# Scratchpad masks for non-strided scratchpads
 		v_sub_u32       v38, s21, 8
 		v_sub_u32       v39, s22, 8
-		v_sub_i32       v50, s23, 8
+		v_sub_u32       v50, s23, 8
 
 		# mask for FSCAL_R
 		v_mov_b32       v51, 0x80F00000
