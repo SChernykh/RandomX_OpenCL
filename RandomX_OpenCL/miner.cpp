@@ -21,6 +21,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #include <chrono>
 #include <atomic>
 #include <sstream>
+#include <cctype>
 #include "miner.h"
 #include "opencl_helpers.h"
 #include "definitions.h"
