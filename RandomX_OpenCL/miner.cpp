@@ -85,14 +85,27 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 	}
 	else
 	{
-		if (!ctx.Compile("randomx_init.bin", { RANDOMX_INIT_CL }, { CL_RANDOMX_INIT }, "", ALWAYS_COMPILE))
+		const char* gcn_binary = "randomx_run_gfx803.bin";
+		int gcn_version = 12;
+
+		std::vector<char> t;
+		std::transform(ctx.device_name.begin(), ctx.device_name.end(), std::back_inserter(t), [](char c) { return static_cast<char>(std::toupper(c)); });
+		if (strcmp(t.data(), "GFX900") == 0)
+		{
+			gcn_binary = "randomx_run_gfx900.bin";
+			gcn_version = 14;
+		}
+
+		std::stringstream options;
+		options << "-D GCN_VERSION=" << gcn_version;
+		if (!ctx.Compile("randomx_init.bin", { RANDOMX_INIT_CL }, { CL_RANDOMX_INIT }, options.str(), ALWAYS_COMPILE))
 		{
 			return false;
 		}
 
-		std::stringstream options;
+		options.str("");
 		options << "-D RANDOMX_PROGRAM_ITERATIONS=" << RANDOMX_PROGRAM_ITERATIONS;
-		if (!ctx.Compile("randomx_run_gfx803.bin", { RANDOMX_RUN_CL }, { CL_RANDOMX_RUN }, options.str(), ALWAYS_USE_BINARY))
+		if (!ctx.Compile(gcn_binary, { RANDOMX_RUN_CL }, { CL_RANDOMX_RUN }, options.str(), ALWAYS_USE_BINARY))
 		{
 			return false;
 		}

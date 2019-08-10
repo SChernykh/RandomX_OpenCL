@@ -21,8 +21,6 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #include "randomx_constants.h"
 #include "randomx_constants_jit.h"
 
-#define GCN_VERSION 12
-
 #define mantissaSize 52
 #define exponentSize 11
 #define mantissaMask ((1UL << mantissaSize) - 1)
