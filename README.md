@@ -11,6 +11,7 @@ Model|CryptonightR H/S|RandomX H/S|Relative speed|Comment
 AMD Vega 64 (1700/1100 MHz)|2200|1188|54%|JIT compiled mode
 AMD Vega 64 (1700/1100 MHz)|2200|163|7.4%|VM interpreted mode
 AMD Vega FE (stock)|2150|980|45.6%|JIT compiled mode (intensity 4096)
+AMD Radeon RX 560 4GB (1400/2200 MHz)|495|255|51.5%|JIT compiled mode (intensity 896)
 GeForce GTX 1080 Ti (2037/11800 MHz)|927|601|64.8%|VM interpreted mode
 
 ## Building on Windows
@@ -22,7 +23,7 @@ GeForce GTX 1080 Ti (2037/11800 MHz)|927|601|64.8%|VM interpreted mode
 ## Building on Ubuntu
 
 - Install prerequisites `sudo apt install git cmake build-essential`
-- If you want to try JIT compiled code for Vega, install amdgpu-pro drivers with OpenCL enabled (run the install script like this `./amdgpu-pro-install --opencl=pal`)
+- If you want to try JIT compiled code for Vega or Polaris GPUs, install amdgpu-pro drivers with OpenCL enabled (run the install script like this `./amdgpu-pro-install --opencl=pal`)
 - Download [CLRadeonExtender](https://github.com/CLRX/CLRX-mirror/releases) and copy `clrxasm` to `/usr/local/bin`
 - Then run commands:
 ```

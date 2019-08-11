@@ -18,11 +18,11 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 */
 
 .amdcl2
-.gpu GFX900
+.gpu GFX803
 .64bit
 .arch_minor 0
 .arch_stepping 0
-.driver_version 223600
+.driver_version 203603
 .kernel randomx_run
 	.config
 		.dims x
@@ -38,7 +38,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		.localsize 256
 		.floatmode 0xc0
 		.pgmrsrc1 0x00ac035f
-		.pgmrsrc2 0x00000090
+		.pgmrsrc2 0x0000008c
 		.dx10clamp
 		.ieeemode
 		.useargs
@@ -57,6 +57,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		.arg batch_size, "uint", uint
 		.arg rx_parameters, "uint", uint
 	.text
+		s_mov_b32       m0, 0x10000
 		s_dcache_wb
 		s_waitcnt       vmcnt(0) & lgkmcnt(0)
 		s_icache_inv
@@ -66,7 +67,9 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 		# s8 contains group id
 		# v0 contains local id
 begin:
-		v_lshl_add_u32  v1, s8, 6, v0
+		s_mov_b32 s8, s6
+		v_lshlrev_b32   v1, 6, s8
+		v_add_u32       v1, vcc, v1, v0
 		s_load_dwordx2  s[0:1], s[4:5], 0x0
 		s_load_dwordx2  s[2:3], s[4:5], 0x40
 		s_load_dwordx2  s[64:65], s[4:5], 0x48
@@ -76,8 +79,9 @@ begin:
 		s_lshl_b32      s16, s8, 2
 		s_add_u32       s64, s64, s16
 		s_addc_u32      s65, s65, 0
-		v_mov_b32       v8, 0
-		global_load_dword v8, v8, s[64:65]
+		v_mov_b32       v8, s64
+		v_mov_b32       v9, s65
+		flat_load_dword v8, v[8:9]
 		s_waitcnt       vmcnt(0)
 		v_readlane_b32  s66, v8, 0
 		s_setreg_b32    hwreg(mode, 2, 2), s66
@@ -87,20 +91,20 @@ begin:
 		s_mov_b32       s68, 256
 		s_mov_b32       s69, 0
 
-		v_add_u32       v1, s0, v1
+		v_add_u32       v1, vcc, s0, v1
 		v_lshrrev_b32   v2, 6, v1
 		v_lshlrev_b32   v3, 5, v2
 		v_and_b32       v1, 63, v1
 		v_mov_b32       v4, 0
 		v_lshlrev_b64   v[3:4], 3, v[3:4]
 		v_lshlrev_b32   v5, 4, v1
-		v_add_co_u32    v3, vcc, s2, v3
+		v_add_u32       v3, vcc, s2, v3
 		v_mov_b32       v6, s3
-		v_addc_co_u32   v4, vcc, v6, v4, vcc
+		v_addc_u32      v4, vcc, v6, v4, vcc
 		v_lshlrev_b32   v41, 2, v1
-		v_add_co_u32    v6, vcc, v3, v41
-		v_addc_co_u32   v7, vcc, v4, 0, vcc
-		global_load_dword v6, v[6:7], off
+		v_add_u32       v6, vcc, v3, v41
+		v_addc_u32      v7, vcc, v4, 0, vcc
+		flat_load_dword v6, v[6:7]
 		v_mov_b32       v0, 0
 		s_waitcnt       vmcnt(0)
 		ds_write_b32    v41, v6
@@ -158,7 +162,8 @@ begin:
 		s_mov_b64       s[6:7], s[8:9]
 		s_mulk_i32      s6, 10048
 
-		v_add3_u32      v5, v0, v5, 64
+		v_add_u32       v5, vcc, v0, v5
+		v_add_u32       v5, vcc, v5, 64
 		s_mov_b64       s[8:9], exec
 		s_andn2_b64     exec, s[8:9], s[2:3]
 		ds_read_b64     v[15:16], v0 offset:168
@@ -173,23 +178,27 @@ begin:
 
 		s_load_dwordx2  s[4:5], s[4:5], 0x50
 		v_lshlrev_b32   v1, 3, v1
-		v_add_u32       v17, v0, v1
+		v_add_u32       v17, vcc, v0, v1
 		s_waitcnt       lgkmcnt(0)
-		v_add_co_u32    v2, vcc, s10, v2
+		v_add_u32       v2, vcc, s10, v2
 		v_mov_b32       v18, s11
-		v_addc_co_u32   v18, vcc, v18, v20, vcc
+		v_addc_u32      v18, vcc, v18, v20, vcc
 		v_mov_b32       v19, 0xffffff
-		v_add_co_u32    v6, vcc, s8, v6
+		v_add_u32       v6, vcc, s8, v6
 		v_mov_b32       v20, s9
-		v_addc_co_u32   v20, vcc, v20, 0, vcc
+		v_addc_u32      v20, vcc, v20, 0, vcc
 		ds_read_b64     v[21:22], v17
 		s_add_u32       s4, s4, s6
 		s_addc_u32      s5, s5, s7
 		v_cndmask_b32   v19, v19, -1, s[2:3]
-		v_lshl_add_u32  v8, v35, 3, v0
-		v_lshl_add_u32  v7, v34, 3, v0
-		v_lshl_add_u32  v12, v12, 3, v0
-		v_lshl_add_u32  v0, v11, 3, v0
+		v_lshlrev_b32   v8, 3, v35
+		v_lshlrev_b32   v7, 3, v34
+		v_lshlrev_b32   v12, 3, v12
+		v_lshlrev_b32   v10, 3, v11
+		v_add_u32       v8, vcc, v8, v0
+		v_add_u32       v7, vcc, v7, v0
+		v_add_u32       v12, vcc, v12, v0
+		v_add_u32       v0, vcc, v10, v0
 		v_mov_b32       v10, v36
 		v_mov_b32       v23, v37
 
@@ -202,19 +211,24 @@ begin:
 		# Scratchpad masks for strided scratchpads
 		#v_sub_u32       v38, s21, 64
 		#v_sub_u32       v39, s22, 64
-		#v_sub_i32       v50, s23, 64
+		#v_sub_u32       v50, s23, 64
 
 		# Scratchpad masks for non-strided scratchpads
-		v_sub_u32       v38, s21, 8
-		v_sub_u32       v39, s22, 8
-		v_sub_i32       v50, s23, 8
+		v_sub_u32       v38, vcc, s21, 8
+		v_sub_u32       v39, vcc, s22, 8
+		v_sub_u32       v50, vcc, s23, 8
 
 		# mask for FSCAL_R
 		v_mov_b32       v51, 0x80F00000
 
+		# swap v3 and v18
+		v_mov_b32       v52, v3
+		v_mov_b32       v3, v18
+		v_mov_b32       v18, v52
+
 		# load scratchpad base address
 		v_readlane_b32	s0, v2, 0
-		v_readlane_b32	s1, v18, 0
+		v_readlane_b32	s1, v3, 0
 
 		# save current executiom mask
 		s_mov_b64       s[36:37], exec
@@ -325,8 +339,8 @@ main_loop:
 		# Offset for non-strided scratchpads
 		# offset1 = spAddr1 + sub * 8
 		# offset0 = spAddr0 + sub * 8
-		v_add_u32       v10, v10, v1
-		v_add_u32       v23, v23, v1
+		v_add_u32       v10, vcc, v10, v1
+		v_add_u32       v23, vcc, v23, v1
 
 		# Offset for strided scratchpads
 		# offset1 = mad24(spAddr1, batch_size, sub * 8)
@@ -336,16 +350,16 @@ main_loop:
 
 		# __global ulong* p1 = (__global ulong*)(scratchpad + offset1);
 		# __global ulong* p0 = (__global ulong*)(scratchpad + offset0);
-		v_add_co_u32    v26, vcc, v2, v10
-		v_addc_co_u32   v27, vcc, v18, 0, vcc
-		v_add_co_u32    v23, vcc, v2, v23
-		v_addc_co_u32   v24, vcc, v18, 0, vcc
+		v_add_u32       v26, vcc, v2, v10
+		v_addc_u32      v27, vcc, v3, 0, vcc
+		v_add_u32       v23, vcc, v2, v23
+		v_addc_u32      v24, vcc, v3, 0, vcc
 
 		# load from spAddr1
-		global_load_dwordx2 v[28:29], v[26:27], off
+		flat_load_dwordx2 v[28:29], v[26:27]
 
 		# load from spAddr0
-		global_load_dwordx2 v[30:31], v[23:24], off
+		flat_load_dwordx2 v[30:31], v[23:24]
 		s_waitcnt       vmcnt(1)
 
 		v_cvt_f64_i32   v[32:33], v28
@@ -356,14 +370,16 @@ main_loop:
 		v_xor_b32       v34, v21, v30
 		v_xor_b32       v35, v22, v31
 
-		v_add_co_u32    v22, vcc, v6, v36
-		v_addc_co_u32   v25, vcc, v20, 0, vcc
+		v_add_u32       v22, vcc, v6, v36
+		v_addc_u32      v25, vcc, v20, 0, vcc
 		v_or_b32        v30, v32, v13
-		v_and_or_b32    v31, v33, v19, v14
+		v_and_b32       v31, v33, v19
+		v_or_b32        v31, v31, v14
 		v_or_b32        v28, v28, v15
-		v_and_or_b32    v29, v29, v19, v16
-		v_add_co_u32    v21, vcc, v22, v1
-		v_addc_co_u32   v22, vcc, v25, 0, vcc
+		v_and_b32       v29, v29, v19
+		v_or_b32        v29, v29, v16
+		v_add_u32       v21, vcc, v22, v1
+		v_addc_u32      v22, vcc, v25, 0, vcc
 		ds_write2_b64   v5, v[30:31], v[28:29] offset1:1
 		s_waitcnt       lgkmcnt(0)
 
@@ -431,7 +447,7 @@ main_loop:
 		# Write out VM integer registers
 		ds_write_b64    v17, v[28:29]
 
-		global_load_dwordx2 v[21:22], v[21:22], off
+		flat_load_dwordx2 v[21:22], v[21:22]
 		s_waitcnt       vmcnt(0) & lgkmcnt(0)
 		v_xor_b32       v21, v28, v21
 		v_xor_b32       v22, v29, v22
@@ -445,9 +461,9 @@ main_loop:
 		v_xor_b32       v30, v32, v30
 		v_xor_b32       v31, v33, v31
 		v_xor_b32       v10, v10, v29
-		global_store_dwordx2 v[26:27], v[21:22], off
+		flat_store_dwordx2 v[26:27], v[21:22]
 		v_and_b32       v10, 0x7fffffc0, v10
-		global_store_dwordx2 v[23:24], v[30:31], off
+		flat_store_dwordx2 v[23:24], v[30:31]
 		s_cmp_eq_u32    s2, 0
 		s_cbranch_scc1  main_loop_end
 		s_sub_i32       s2, s2, 1
@@ -458,16 +474,21 @@ main_loop:
 		s_branch        main_loop
 main_loop_end:
 
-		v_add_co_u32    v0, vcc, v3, v1
-		v_addc_co_u32   v1, vcc, v4, 0, vcc
-		global_store_dwordx2 v[0:1], v[21:22], off
-		global_store_dwordx2 v[0:1], v[30:31], off inst_offset:64
-		global_store_dwordx2 v[0:1], v[32:33], off inst_offset:128
+		v_add_u32       v0, vcc, v18, v1
+		v_addc_u32      v1, vcc, v4, 0, vcc
+		flat_store_dwordx2 v[0:1], v[21:22]
+		v_add_u32       v0, vcc, v0, 64
+		v_addc_u32      v1, vcc, v1, 0, vcc
+		flat_store_dwordx2 v[0:1], v[30:31]
+		v_add_u32       v0, vcc, v0, 64
+		v_addc_u32      v1, vcc, v1, 0, vcc
+		flat_store_dwordx2 v[0:1], v[32:33]
 
 		# store rounding mode
-		v_mov_b32       v0, 0
-		v_mov_b32       v1, s66
-		global_store_dword v0, v1, s[64:65]
+		v_mov_b32       v0, s64
+		v_mov_b32       v1, s65
+		v_mov_b32       v2, s66
+		flat_store_dword v[0:1], v2
 
 program_end:
 		s_endpgm
@@ -484,7 +505,7 @@ fsqrt_r_sub0:
 
 		v_mul_f64       v[42:43], v[28:29], v[68:69]
 		v_mov_b32       v48, v28
-		v_sub_u32       v49, v29, v84
+		v_sub_u32       v49, vcc, v29, v84
 		v_mov_b32       v46, v28
 		v_xor_b32       v47, v49, v82
 		v_fma_f64       v[46:47], v[46:47], v[42:43], 0.5
@@ -511,7 +532,7 @@ fsqrt_r_sub1:
 
 		v_mul_f64       v[42:43], v[28:29], v[70:71]
 		v_mov_b32       v48, v28
-		v_sub_u32       v49, v29, v84
+		v_sub_u32       v49, vcc, v29, v84
 		v_mov_b32       v46, v28
 		v_xor_b32       v47, v49, v82
 		v_fma_f64       v[46:47], v[46:47], v[42:43], 0.5
@@ -538,7 +559,7 @@ fsqrt_r_sub2:
 
 		v_mul_f64       v[42:43], v[28:29], v[72:73]
 		v_mov_b32       v48, v28
-		v_sub_u32       v49, v29, v84
+		v_sub_u32       v49, vcc, v29, v84
 		v_mov_b32       v46, v28
 		v_xor_b32       v47, v49, v82
 		v_fma_f64       v[46:47], v[46:47], v[42:43], 0.5
@@ -565,7 +586,7 @@ fsqrt_r_sub3:
 
 		v_mul_f64       v[42:43], v[28:29], v[74:75]
 		v_mov_b32       v48, v28
-		v_sub_u32       v49, v29, v84
+		v_sub_u32       v49, vcc, v29, v84
 		v_mov_b32       v46, v28
 		v_xor_b32       v47, v49, v82
 		v_fma_f64       v[46:47], v[46:47], v[42:43], 0.5
@@ -582,7 +603,8 @@ fsqrt_r_sub3:
 
 fdiv_m_sub0:
 		v_or_b32        v28, v28, v78
-		v_and_or_b32    v29, v29, v77, v79
+		v_and_b32       v29, v29, v77
+		v_or_b32        v29, v29, v79
 		s_setreg_b32    hwreg(mode, 2, 2), s67
 		v_rcp_f64       v[48:49], v[28:29]
 		v_fma_f64       v[80:81], -v[28:29], v[48:49], 1.0
@@ -602,7 +624,8 @@ fdiv_m_sub0:
 
 fdiv_m_sub1:
 		v_or_b32        v28, v28, v78
-		v_and_or_b32    v29, v29, v77, v79
+		v_and_b32       v29, v29, v77
+		v_or_b32        v29, v29, v79
 		s_setreg_b32    hwreg(mode, 2, 2), s67
 		v_rcp_f64       v[48:49], v[28:29]
 		v_fma_f64       v[80:81], -v[28:29], v[48:49], 1.0
@@ -622,7 +645,8 @@ fdiv_m_sub1:
 
 fdiv_m_sub2:
 		v_or_b32        v28, v28, v78
-		v_and_or_b32    v29, v29, v77, v79
+		v_and_b32       v29, v29, v77
+		v_or_b32        v29, v29, v79
 		s_setreg_b32    hwreg(mode, 2, 2), s67
 		v_rcp_f64       v[48:49], v[28:29]
 		v_fma_f64       v[80:81], -v[28:29], v[48:49], 1.0
@@ -642,7 +666,8 @@ fdiv_m_sub2:
 
 fdiv_m_sub3:
 		v_or_b32        v28, v28, v78
-		v_and_or_b32    v29, v29, v77, v79
+		v_and_b32       v29, v29, v77
+		v_or_b32        v29, v29, v79
 		s_setreg_b32    hwreg(mode, 2, 2), s67
 		v_rcp_f64       v[48:49], v[28:29]
 		v_fma_f64       v[80:81], -v[28:29], v[48:49], 1.0
@@ -669,8 +694,8 @@ ismulh_r_sub:
 		v_mov_b32       v40, v42
 		v_mad_u64_u32   v[45:46], s[32:33], s39, v45, v[40:41]
 		v_mad_u64_u32   v[42:43], s[32:33], s39, v47, v[43:44]
-		v_add_co_u32    v42, vcc, v42, v46
-		v_addc_co_u32   v43, vcc, 0, v43, vcc
+		v_add_u32       v42, vcc, v42, v46
+		v_addc_u32      v43, vcc, 0, v43, vcc
 		v_readlane_b32  s32, v42, 0
 		v_readlane_b32  s33, v43, 0
 		s_cmp_lt_i32    s15, 0
@@ -693,8 +718,8 @@ imulh_r_sub:
 		v_mov_b32       v40, v42
 		v_mad_u64_u32   v[45:46], s[32:33], s15, v45, v[40:41]
 		v_mad_u64_u32   v[42:43], s[32:33], s15, v47, v[43:44]
-		v_add_co_u32    v42, vcc, v42, v46
-		v_addc_co_u32   v43, vcc, 0, v43, vcc
+		v_add_u32       v42, vcc, v42, v46
+		v_addc_u32      v43, vcc, 0, v43, vcc
 		v_readlane_b32  s14, v42, 0
 		v_readlane_b32  s15, v43, 0
 		s_mov_b64       exec, 3

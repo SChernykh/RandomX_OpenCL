@@ -21,6 +21,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #include <chrono>
 #include <atomic>
 #include <sstream>
+#include <cctype>
 #include "miner.h"
 #include "opencl_helpers.h"
 #include "definitions.h"
@@ -31,7 +32,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 
 using namespace std::chrono;
 
-bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uint32_t start_nonce, uint32_t workers_per_hash, uint32_t bfactor, uint32_t high_precision, bool portable, bool dataset_host_allocated, bool validate)
+bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uint32_t start_nonce, uint32_t workers_per_hash, uint32_t bfactor, bool portable, bool dataset_host_allocated, bool validate)
 {
 	std::cout << "Initializing GPU #" << device_id << " on OpenCL platform #" << platform_id << std::endl << std::endl;
 
@@ -76,8 +77,11 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 			break;
 		}
 
+		if (bfactor > 10)
+			bfactor = 10;
+
 		std::stringstream options;
-		options << "-D WORKERS_PER_HASH=" << workers_per_hash << (high_precision ? " -D HIGH_PRECISION" : "") << " -Werror";
+		options << "-D WORKERS_PER_HASH=" << workers_per_hash << " -Werror";
 		if (!ctx.Compile("randomx_vm.bin", { RANDOMX_VM_CL }, { CL_INIT_VM, CL_EXECUTE_VM }, options.str(), COMPILE_CACHE_BINARY))
 		{
 			return false;
@@ -85,14 +89,27 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 	}
 	else
 	{
-		if (!ctx.Compile("randomx_init.bin", { RANDOMX_INIT_CL }, { CL_RANDOMX_INIT }, "", COMPILE_CACHE_BINARY))
+		const char* gcn_binary = "randomx_run_gfx803.bin";
+		int gcn_version = 12;
+
+		std::vector<char> t;
+		std::transform(ctx.device_name.begin(), ctx.device_name.end(), std::back_inserter(t), [](char c) { return static_cast<char>(std::toupper(c)); });
+		if (strcmp(t.data(), "GFX900") == 0)
+		{
+			gcn_binary = "randomx_run_gfx900.bin";
+			gcn_version = 14;
+		}
+
+		std::stringstream options;
+		options << "-D GCN_VERSION=" << gcn_version;
+		if (!ctx.Compile("randomx_init.bin", { RANDOMX_INIT_CL }, { CL_RANDOMX_INIT }, options.str(), ALWAYS_COMPILE))
 		{
 			return false;
 		}
 
-		std::stringstream options;
+		options.str("");
 		options << "-D RANDOMX_PROGRAM_ITERATIONS=" << RANDOMX_PROGRAM_ITERATIONS;
-		if (!ctx.Compile("randomx_run.bin", { RANDOMX_RUN_CL }, { CL_RANDOMX_RUN }, options.str(), ALWAYS_USE_BINARY))
+		if (!ctx.Compile(gcn_binary, { RANDOMX_RUN_CL }, { CL_RANDOMX_RUN }, options.str(), ALWAYS_USE_BINARY))
 		{
 			return false;
 		}
@@ -398,6 +415,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 				//	fclose(fp);
 				//	return false;
 				//}
+				CL_CHECKED_CALL(clFinish, ctx.queue);
 				CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_run, 1, nullptr, &global_work_size64, &local_work_size, 0, nullptr, nullptr);
 			}
 
