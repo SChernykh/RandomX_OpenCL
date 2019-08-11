@@ -1329,8 +1329,11 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 			{
 				if (pass == 0)
 				{
+					// Workaround for a bug in AMD 18.6.1 driver
+					volatile uint dstAvailableAt2 = dstAvailableAt;
+
 					// Mark branch target
-					e[dstAvailableAt].x |= (0x20 << 8);
+					e[dstAvailableAt2].x |= (0x20 << 8);
 
 					// Mark branch
 					e[i].x |= (0x40 << 8);
