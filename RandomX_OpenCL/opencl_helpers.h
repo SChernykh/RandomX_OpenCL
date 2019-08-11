@@ -56,16 +56,18 @@ struct OpenCLContext
 	OpenCLContext()
 		: context(0)
 		, queue(0)
+		, elf_binary_flags(0)
 	{}
 
 	~OpenCLContext();
 
 	bool Init(uint32_t platform_id, uint32_t device_id);
-	bool Compile(const char* binary_name, const std::initializer_list<std::string>& source_files, const std::initializer_list<std::string>& kernel_names, const std::string& options = std::string(), CachingParameters caching = ALWAYS_COMPILE);
+	bool Compile(const char* binary_name, const std::initializer_list<std::string>& source_files, const std::initializer_list<std::string>& kernel_names, const std::string& options = std::string(), CachingParameters caching = ALWAYS_COMPILE, uint32_t force_elf_binary_flags = 0);
 
 	cl_device_id device;
 	cl_context context;
 	cl_command_queue queue;
+	uint32_t elf_binary_flags;
 	std::map<std::string, cl_kernel> kernels;
 
 	std::vector<char> device_name;

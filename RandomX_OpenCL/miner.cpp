@@ -109,7 +109,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 
 		options.str("");
 		options << "-D RANDOMX_PROGRAM_ITERATIONS=" << RANDOMX_PROGRAM_ITERATIONS;
-		if (!ctx.Compile(gcn_binary, { RANDOMX_RUN_CL }, { CL_RANDOMX_RUN }, options.str(), ALWAYS_USE_BINARY))
+		if (!ctx.Compile(gcn_binary, { RANDOMX_RUN_CL }, { CL_RANDOMX_RUN }, options.str(), ALWAYS_USE_BINARY, ctx.elf_binary_flags))
 		{
 			return false;
 		}

@@ -104,7 +104,7 @@ bool OpenCLContext::Init(uint32_t platform_id, uint32_t device_id)
 	return true;
 }
 
-bool OpenCLContext::Compile(const char* binary_name, const std::initializer_list<std::string>& source_files, const std::initializer_list<std::string>& kernel_names, const std::string& options, CachingParameters caching)
+bool OpenCLContext::Compile(const char* binary_name, const std::initializer_list<std::string>& source_files, const std::initializer_list<std::string>& kernel_names, const std::string& options, CachingParameters caching, uint32_t force_elf_binary_flags)
 {
 	std::vector<std::string> source;
 	source.reserve(source_files.size());
@@ -138,7 +138,11 @@ bool OpenCLContext::Compile(const char* binary_name, const std::initializer_list
 			buf.insert(buf.begin(), std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
 
 			const size_t data_length = buf.size();
+			if (force_elf_binary_flags)
+				*(uint32_t*)(buf.data() + 0x30) = force_elf_binary_flags;
+
 			const unsigned char* binary_data = reinterpret_cast<const unsigned char*>(buf.data());
+
 			program = clCreateProgramWithBinary(context, 1, &device, &data_length, &binary_data, nullptr, &err);
 			CL_CHECK_RESULT(clCreateProgramWithBinary);
 
@@ -187,15 +191,17 @@ bool OpenCLContext::Compile(const char* binary_name, const std::initializer_list
 	}
 	std::cout << "done" << std::endl;
 
+	size_t bin_size;
+	CL_CHECKED_CALL(clGetProgramInfo, program, CL_PROGRAM_BINARY_SIZES, sizeof(bin_size), &bin_size, nullptr);
+
+	std::vector<char> binary_data(bin_size);
+	char* tmp[1] = { binary_data.data() };
+	CL_CHECKED_CALL(clGetProgramInfo, program, CL_PROGRAM_BINARIES, sizeof(tmp), tmp, NULL);
+
+	elf_binary_flags = (bin_size >= 0x34) ? *(uint32_t*)(binary_data.data() + 0x30) : 0;
+
 	if (!created_with_binary)
 	{
-		size_t bin_size;
-		CL_CHECKED_CALL(clGetProgramInfo, program, CL_PROGRAM_BINARY_SIZES, sizeof(bin_size), &bin_size, nullptr);
-
-		std::vector<char> binary_data(bin_size);
-		char* tmp[1] = { binary_data.data() };
-		CL_CHECKED_CALL(clGetProgramInfo, program, CL_PROGRAM_BINARIES, sizeof(tmp), tmp, NULL);
-
 		std::ofstream f(binary_name, std::ios::binary);
 		f.write(tmp[0], bin_size);
 		f.close();
