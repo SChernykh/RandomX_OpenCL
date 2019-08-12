@@ -14,7 +14,7 @@ AMD Vega 64 (1700/1100 MHz)|2200|163|7.4%|VM interpreted mode
 AMD Vega FE (stock)|2150|980|45.6%|JIT compiled mode (intensity 4096)
 AMD Radeon RX 560 4GB (1400/2200 MHz)|495|255|51.5%|JIT compiled mode (intensity 896)
 AMD Radeon RX RX470/570 4GB|930-950|400-410|43%|JIT compiled mode, 50W
-AMD Radeon RX RX480/580 4GB|960-1000|470|47%|JIT compiled mode, 50W
+AMD Radeon RX RX480/580 4GB|960-1000|470|47%|JIT compiled mode, 60W
 GeForce GTX 1080 Ti (2037/11800 MHz)|927|601|64.8%|VM interpreted mode
 
 ## Building on Windows
