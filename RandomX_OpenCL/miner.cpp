@@ -301,6 +301,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 	const size_t global_work_size4 = intensity * 4;
 	const size_t global_work_size8 = intensity * 8;
 	const size_t global_work_size16 = intensity * 16;
+	const size_t global_work_size32 = intensity * 32;
 	const size_t global_work_size64 = intensity * 64;
 	const size_t local_work_size = 64;
 	const size_t local_work_size32 = 32;
@@ -378,7 +379,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 		for (size_t i = 0; i < RANDOMX_PROGRAM_COUNT; ++i)
 		{
 			CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_fillaes1rx4_entropy, 1, nullptr, &global_work_size4, &local_work_size, 0, nullptr, nullptr);
-			CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_init, 1, nullptr, portable ? &global_work_size8 : &global_work_size, portable ? &local_work_size32 : &local_work_size, 0, nullptr, nullptr);
+			CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_init, 1, nullptr, portable ? &global_work_size8 : &global_work_size32, portable ? &local_work_size32 : &local_work_size, 0, nullptr, nullptr);
 			if (portable)
 			{
 				uint32_t first = 1;
@@ -407,7 +408,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 				//if (i == 0)
 				//{
 				//	CL_CHECKED_CALL(clFinish, ctx.queue);
-				//	std::vector<char> buf((intensity / HASHES_PER_GROUP) * COMPILED_PROGRAM_SIZE);
+				//	std::vector<char> buf(intensity * COMPILED_PROGRAM_SIZE);
 				//	CL_CHECKED_CALL(clEnqueueReadBuffer, ctx.queue, compiled_programs_gpu, CL_TRUE, 0, buf.size(), buf.data(), 0, nullptr, nullptr);
 				//	FILE* fp;
 				//	fopen_s(&fp, "compiled_program.bin", "wb");

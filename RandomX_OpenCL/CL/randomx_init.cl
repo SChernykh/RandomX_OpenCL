@@ -1511,7 +1511,11 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 __attribute__((reqd_work_group_size(64, 1, 1)))
 __kernel void randomx_init(__global ulong* entropy, __global ulong* registers, __global uint2* intermediate_programs, __global uint* programs, uint batch_size)
 {
-	const uint global_index = get_global_id(0);
+	const uint global_index = get_global_id(0) / 32;
+	const uint sub = get_global_id(0) % 32;
+
+	if (sub != 0)
+		return;
 
 	__global uint2* e = (__global uint2*)(entropy + global_index * (ENTROPY_SIZE / sizeof(ulong)) + (128 / sizeof(ulong)));
 	__global uint2* p0 = intermediate_programs + global_index * (INTERMEDIATE_PROGRAM_SIZE / sizeof(uint2));
