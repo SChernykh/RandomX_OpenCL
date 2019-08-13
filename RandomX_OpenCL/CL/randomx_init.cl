@@ -123,7 +123,7 @@ __global uint* jit_scratchpad_calc_fixed_address(__global uint* p, uint imm32, u
 	return p;
 }
 
-__global uint* jit_scratchpad_load(__global uint* p, uint lane_index, uint vgpr_index)
+__global uint* jit_scratchpad_load(__global uint* p, uint vgpr_index)
 {
 	// v28 = offset
 
@@ -142,19 +142,19 @@ __global uint* jit_scratchpad_load(__global uint* p, uint lane_index, uint vgpr_
 	return p;
 }
 
-__global uint* jit_scratchpad_load2(__global uint* p, uint lane_index, uint vgpr_index, int vmcnt)
+__global uint* jit_scratchpad_load2(__global uint* p, uint vgpr_index, int vmcnt)
 {
 	// s_waitcnt vmcnt(N)
 	if (vmcnt >= 0)
 		*(p++) = 0xbf8c0f70u | (vmcnt & 15) | ((vmcnt >> 4) << 14);
 
-	// v_readlane_b32 s14, vgpr_index, lane_index * 16
+	// v_readlane_b32 s14, vgpr_index, 0
 	*(p++) = 0xd289000eu;
-	*(p++) = 0x00010100u | (lane_index << 13) | vgpr_index;
+	*(p++) = 0x00010100u | vgpr_index;
 
-	// v_readlane_b32 s15, vgpr_index + 1, lane_index * 16
+	// v_readlane_b32 s15, vgpr_index + 1, 0
 	*(p++) = 0xd289000fu;
-	*(p++) = 0x00010100u | (lane_index << 13) | (vgpr_index + 1);
+	*(p++) = 0x00010100u | (vgpr_index + 1);
 
 	return p;
 }
@@ -179,7 +179,7 @@ __global uint* jit_scratchpad_calc_address_fp(__global uint* p, uint src, uint i
 	return p;
 }
 
-__global uint* jit_scratchpad_load_fp(__global uint* p, uint lane_index, uint vgpr_index)
+__global uint* jit_scratchpad_load_fp(__global uint* p, uint vgpr_index)
 {
 	// v28 = offset
 
@@ -198,7 +198,7 @@ __global uint* jit_scratchpad_load_fp(__global uint* p, uint lane_index, uint vg
 	return p;
 }
 
-__global uint* jit_scratchpad_load2_fp(__global uint* p, uint lane_index, uint vgpr_index, int vmcnt)
+__global uint* jit_scratchpad_load2_fp(__global uint* p, uint vgpr_index, int vmcnt)
 {
 	// s_waitcnt vmcnt(N)
 	if (vmcnt >= 0)
@@ -229,7 +229,7 @@ ulong imul_rcp_value(uint divisor)
 	return quotient;
 }
 
-__global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch_target, const uint2 inst, int prefetch_vgpr_index, int vmcnt, uint lane_index, uint batch_size)
+__global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch_target, const uint2 inst, int prefetch_vgpr_index, int vmcnt, uint batch_size)
 {
 	uint opcode = inst.x & 0xFF;
 	const uint dst = (inst.x >> 8) & 7;
@@ -283,12 +283,12 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			else // p = 1/8
 				p = jit_scratchpad_calc_fixed_address(p, inst.y & ScratchpadL3Mask, batch_size);
 
-			p = jit_scratchpad_load(p, lane_index, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
+			p = jit_scratchpad_load(p, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
 		}
 
 		if (prefetch_vgpr_index <= 0)
 		{
-			p = jit_scratchpad_load2(p, lane_index, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
+			p = jit_scratchpad_load2(p, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
 
 			// s_add_u32 s(16 + dst * 2), s(16 + dst * 2), s14
 			*(p++) = 0x80100e10u | (dst << 1) | (dst << 17);
@@ -336,12 +336,12 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			else // p = 1/8
 				p = jit_scratchpad_calc_fixed_address(p, inst.y & ScratchpadL3Mask, batch_size);
 
-			p = jit_scratchpad_load(p, lane_index, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
+			p = jit_scratchpad_load(p, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
 		}
 
 		if (prefetch_vgpr_index <= 0)
 		{
-			p = jit_scratchpad_load2(p, lane_index, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
+			p = jit_scratchpad_load2(p, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
 
 			// s_sub_u32 s(16 + dst * 2), s(16 + dst * 2), s14
 			*(p++) = 0x80900e10u | (dst << 1) | (dst << 17);
@@ -438,12 +438,12 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			else // p = 1/8
 				p = jit_scratchpad_calc_fixed_address(p, inst.y & ScratchpadL3Mask, batch_size);
 
-			p = jit_scratchpad_load(p, lane_index, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
+			p = jit_scratchpad_load(p, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
 		}
 
 		if (prefetch_vgpr_index <= 0)
 		{
-			p = jit_scratchpad_load2(p, lane_index, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
+			p = jit_scratchpad_load2(p, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
 
 #if GCN_VERSION >= 14
 			// s_mul_hi_u32 s33, s(16 + dst * 2), s14
@@ -501,12 +501,12 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			else // p = 1/8
 				p = jit_scratchpad_calc_fixed_address(p, inst.y & ScratchpadL3Mask, batch_size);
 
-			p = jit_scratchpad_load(p, lane_index, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
+			p = jit_scratchpad_load(p, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
 		}
 
 		if (prefetch_vgpr_index <= 0)
 		{
-			p = jit_scratchpad_load2(p, lane_index, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
+			p = jit_scratchpad_load2(p, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
 
 			*(p++) = 0xbea60110u | (dst << 1);				// s_mov_b64 s[38:39], s[16 + src * 2:17 + src * 2]
 			*(p++) = 0xbebc1e3au;							// s_swappc_b64 s[60:61], s[58:59]
@@ -539,12 +539,12 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			else // p = 1/8
 				p = jit_scratchpad_calc_fixed_address(p, inst.y & ScratchpadL3Mask, batch_size);
 
-			p = jit_scratchpad_load(p, lane_index, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
+			p = jit_scratchpad_load(p, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
 		}
 
 		if (prefetch_vgpr_index <= 0)
 		{
-			p = jit_scratchpad_load2(p, lane_index, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
+			p = jit_scratchpad_load2(p, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
 
 			*(p++) = 0xbea60110u | (dst << 1);				// s_mov_b64 s[38:39], s[16 + dst * 2:17 + dst * 2]
 			*(p++) = 0xbebc1e38u;							// s_swappc_b64 s[60:61], s[56:57]
@@ -639,12 +639,12 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			else // p = 1/8
 				p = jit_scratchpad_calc_fixed_address(p, inst.y & ScratchpadL3Mask, batch_size);
 
-			p = jit_scratchpad_load(p, lane_index, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
+			p = jit_scratchpad_load(p, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
 		}
 
 		if (prefetch_vgpr_index <= 0)
 		{
-			p = jit_scratchpad_load2(p, lane_index, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
+			p = jit_scratchpad_load2(p, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
 
 			// s_xor_b64 s[16 + dst * 2:17 + dst * 2], s[16 + dst * 2:17 + dst * 2], s[14:15]
 			*(p++) = 0x88900e10u | (dst << 1) | (dst << 17);
@@ -749,12 +749,12 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		if (prefetch_vgpr_index >= 0)
 		{
 			p = jit_scratchpad_calc_address_fp(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask_reg : ScratchpadL2Mask_reg, batch_size);
-			p = jit_scratchpad_load_fp(p, lane_index, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
+			p = jit_scratchpad_load_fp(p, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
 		}
 
 		if (prefetch_vgpr_index <= 0)
 		{
-			p = jit_scratchpad_load2_fp(p, lane_index, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
+			p = jit_scratchpad_load2_fp(p, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
 
 			// v_add_f64 v[60 + dst * 2:61 + dst * 2], v[60 + dst * 2:61 + dst * 2], v[28:29]
 			*(p++) = 0xd280003cu + ((dst & 3) << 1);
@@ -782,12 +782,12 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		if (prefetch_vgpr_index >= 0)
 		{
 			p = jit_scratchpad_calc_address_fp(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask_reg : ScratchpadL2Mask_reg, batch_size);
-			p = jit_scratchpad_load_fp(p, lane_index, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
+			p = jit_scratchpad_load_fp(p, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
 		}
 
 		if (prefetch_vgpr_index <= 0)
 		{
-			p = jit_scratchpad_load2_fp(p, lane_index, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
+			p = jit_scratchpad_load2_fp(p, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
 
 			// v_add_f64 v[60 + dst * 2:61 + dst * 2], v[60 + dst * 2:61 + dst * 2], -v[28:29]
 			*(p++) = 0xd280003cu + ((dst & 3) << 1);
@@ -825,12 +825,12 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		if (prefetch_vgpr_index >= 0)
 		{
 			p = jit_scratchpad_calc_address_fp(p, src, inst.y, (mod % 4) ? ScratchpadL1Mask_reg : ScratchpadL2Mask_reg, batch_size);
-			p = jit_scratchpad_load_fp(p, lane_index, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
+			p = jit_scratchpad_load_fp(p, prefetch_vgpr_index ? prefetch_vgpr_index : 28);
 		}
 
 		if (prefetch_vgpr_index <= 0)
 		{
-			p = jit_scratchpad_load2_fp(p, lane_index, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
+			p = jit_scratchpad_load2_fp(p, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
 
 			// s_swappc_b64 s[60:61], s[48 + dst * 2:49 + dst * 2]
 			*(p++) = 0xbebc1e30u + ((dst & 3) << 1);
@@ -976,7 +976,7 @@ int jit_prefetch_read(
 	return prefetch_data_count + 1;
 }
 
-__global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global uint* p, uint lane_index, uint batch_size)
+__global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global uint* p, uint batch_size)
 {
 	int prefetch_data_count;
 
@@ -1422,7 +1422,7 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 
 	__global int* prefetched_vgprs = prefecth_vgprs_stack + num_prefetch_vgprs;
 
-	#pragma unroll
+	#pragma unroll(8)
 	for (int i = 0; i < RANDOMX_PROGRAM_SIZE; ++i)
 		prefetched_vgprs[i] = 0;
 
@@ -1445,13 +1445,54 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 		if (inst.x & (0x20 << 8))
 			last_branch_target = p;
 
-		while ((prefetch_data.x == i) && (num_prefetch_vgprs_available > 0))
-		{
-			++mem_counter;
-			const int vgpr_id = prefecth_vgprs_stack[--num_prefetch_vgprs_available];
-			prefetched_vgprs[prefetch_data.y] = vgpr_id | (mem_counter << 16);
+		bool done = false;
+		do {
+			uint2 jit_inst;
+			int jit_prefetch_vgpr_index;
+			int jit_vmcnt;
 
-			p = jit_emit_instruction(p, 0, e[prefetch_data.y], vgpr_id, mem_counter, lane_index, batch_size);
+			if (!done && (prefetch_data.x == i) && (num_prefetch_vgprs_available > 0))
+			{
+				++mem_counter;
+				const int vgpr_id = prefecth_vgprs_stack[--num_prefetch_vgprs_available];
+				prefetched_vgprs[prefetch_data.y] = vgpr_id | (mem_counter << 16);
+
+				jit_inst = e[prefetch_data.y];
+				jit_prefetch_vgpr_index = vgpr_id;
+				jit_vmcnt = mem_counter;
+
+				s_waitcnt_value = 63;
+
+				++k;
+				prefetch_data = p0[k];
+			}
+			else
+			{
+				const int prefetched_vgprs_data = prefetched_vgprs[i];
+				const int vgpr_id = prefetched_vgprs_data & 0xFFFF;
+				const int prev_mem_counter = prefetched_vgprs_data >> 16;
+				if (vgpr_id)
+					prefecth_vgprs_stack[num_prefetch_vgprs_available++] = vgpr_id;
+
+				if (inst.x & (0x80 << 8))
+				{
+					++mem_counter;
+					s_waitcnt_value = 63;
+				}
+
+				const int vmcnt = mem_counter - prev_mem_counter;
+
+				jit_inst = inst;
+				jit_prefetch_vgpr_index = -vgpr_id;
+				jit_vmcnt = (vmcnt < s_waitcnt_value) ? vmcnt : -1;
+
+				if (vmcnt < s_waitcnt_value)
+					s_waitcnt_value = vmcnt;
+
+				done = true;
+			}
+
+			p = jit_emit_instruction(p, last_branch_target, jit_inst, jit_prefetch_vgpr_index, jit_vmcnt, batch_size);
 			if (p - start_p > size_limit)
 			{
 				// Code size limit exceeded!!!
@@ -1459,37 +1500,7 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 				*(p++) = 0xbe801d0cu; // s_setpc_b64 s[12:13]
 				return p;
 			}
-
-			s_waitcnt_value = 63;
-
-			++k;
-			prefetch_data = p0[k];
-		}
-
-		const int prefetched_vgprs_data = prefetched_vgprs[i];
-		const int vgpr_id = prefetched_vgprs_data & 0xFFFF;
-		const int prev_mem_counter = prefetched_vgprs_data >> 16;
-		if (vgpr_id)
-			prefecth_vgprs_stack[num_prefetch_vgprs_available++] = vgpr_id;
-
-		if (inst.x & (0x80 << 8))
-		{
-			++mem_counter;
-			s_waitcnt_value = 63;
-		}
-
-		const int vmcnt = mem_counter - prev_mem_counter;
-		p = jit_emit_instruction(p, last_branch_target, inst, -vgpr_id, (vmcnt < s_waitcnt_value) ? vmcnt : -1, lane_index, batch_size);
-		if (p - start_p > size_limit)
-		{
-			// Code size limit exceeded!!!
-			// Jump back to randomx_run kernel
-			*(p++) = 0xbe801d0cu; // s_setpc_b64 s[12:13]
-			return p;
-		}
-
-		if (vmcnt < s_waitcnt_value)
-			s_waitcnt_value = vmcnt;
+		} while (!done);
 	}
 
 	// Jump back to randomx_run kernel
@@ -1501,13 +1512,12 @@ __attribute__((reqd_work_group_size(64, 1, 1)))
 __kernel void randomx_init(__global ulong* entropy, __global ulong* registers, __global uint2* intermediate_programs, __global uint* programs, uint batch_size)
 {
 	const uint global_index = get_global_id(0);
-	{
-		__global uint2* p0 = intermediate_programs + global_index * (INTERMEDIATE_PROGRAM_SIZE / sizeof(uint2));
-		__global uint* p = programs + global_index * (COMPILED_PROGRAM_SIZE / sizeof(uint));
-		__global uint2* e = (__global uint2*)(entropy + global_index * (ENTROPY_SIZE / sizeof(ulong)) + (128 / sizeof(ulong)));
 
-		generate_jit_code(e, p0, p, 0, batch_size);
-	}
+	__global uint2* e = (__global uint2*)(entropy + global_index * (ENTROPY_SIZE / sizeof(ulong)) + (128 / sizeof(ulong)));
+	__global uint2* p0 = intermediate_programs + global_index * (INTERMEDIATE_PROGRAM_SIZE / sizeof(uint2));
+	__global uint* p = programs + global_index * (COMPILED_PROGRAM_SIZE / sizeof(uint));
+
+	generate_jit_code(e, p0, p, batch_size);
 
 	__global ulong* R = registers + global_index * 32;
 	entropy += global_index * (ENTROPY_SIZE / sizeof(ulong));
