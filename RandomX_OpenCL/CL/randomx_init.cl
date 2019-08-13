@@ -1506,7 +1506,7 @@ __kernel void randomx_init(__global ulong* entropy, __global ulong* registers, _
 		__global uint* p = programs + global_index * (COMPILED_PROGRAM_SIZE / sizeof(uint));
 		__global uint2* e = (__global uint2*)(entropy + global_index * (ENTROPY_SIZE / sizeof(ulong)) + (128 / sizeof(ulong)));
 
-		p = generate_jit_code(e, p0, p, 0, batch_size);
+		generate_jit_code(e, p0, p, 0, batch_size);
 	}
 
 	__global ulong* R = registers + global_index * 32;
