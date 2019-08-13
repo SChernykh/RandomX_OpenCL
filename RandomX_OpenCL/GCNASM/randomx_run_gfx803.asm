@@ -133,13 +133,10 @@ begin:
 		s_bfe_u32       s24, s20, 0x04000F
 		s_lshl_b32      s24, 1, s24
 
-		# Base address for non-strided scratchpads
+		# Base address for scratchpads
 		s_add_u32       s2, s23, 64
 		v_mul_hi_u32    v20, v2, s2
 		v_mul_lo_u32    v2, v2, s2
-
-		# Base address for strided scratchpads
-		#v_lshlrev_b32   v2, 6, v2
 
 		# v41, v44 = 0
 		v_mov_b32       v41, 0
@@ -208,12 +205,7 @@ begin:
 		# batch_size
 		s_mov_b32       s3, s16
 
-		# Scratchpad masks for strided scratchpads
-		#v_sub_u32       v38, s21, 64
-		#v_sub_u32       v39, s22, 64
-		#v_sub_u32       v50, s23, 64
-
-		# Scratchpad masks for non-strided scratchpads
+		# Scratchpad masks for scratchpads
 		v_sub_u32       v38, vcc, s21, 8
 		v_sub_u32       v39, vcc, s22, 8
 		v_sub_u32       v50, vcc, s23, 8
@@ -336,17 +328,11 @@ main_loop:
 		v_and_b32       v10, s86, v10
 		v_and_b32       v23, s86, v23
 
-		# Offset for non-strided scratchpads
+		# Offset for scratchpads
 		# offset1 = spAddr1 + sub * 8
 		# offset0 = spAddr0 + sub * 8
 		v_add_u32       v10, vcc, v10, v1
 		v_add_u32       v23, vcc, v23, v1
-
-		# Offset for strided scratchpads
-		# offset1 = mad24(spAddr1, batch_size, sub * 8)
-		# offset0 = mad24(spAddr0, batch_size, sub * 8)
-		#v_mad_u32_u24   v10, v10, s3, v1
-		#v_mad_u32_u24   v23, v23, s3, v1
 
 		# __global ulong* p1 = (__global ulong*)(scratchpad + offset1);
 		# __global ulong* p0 = (__global ulong*)(scratchpad + offset0);

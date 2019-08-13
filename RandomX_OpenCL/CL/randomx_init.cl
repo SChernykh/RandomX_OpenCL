@@ -78,14 +78,14 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // Total: 4756.25 + 4(s_setpc_b64) = 4760.25 bytes on average
 // Real average program size: 4743 bytes
 
-ulong getSmallPositiveFloatBits(const ulong entropy)
+double getSmallPositiveFloatBits(const ulong entropy)
 {
 	ulong exponent = entropy >> 59;
 	ulong mantissa = entropy & mantissaMask;
 	exponent += exponentBias;
 	exponent &= exponentMask;
 	exponent <<= mantissaSize;
-	return exponent | mantissa;
+	return as_double(exponent | mantissa);
 }
 
 ulong getStaticExponent(const ulong entropy)
@@ -111,26 +111,11 @@ __global uint* jit_scratchpad_calc_address(__global uint* p, uint src, uint imm3
 	// v_and_b32 v28, s14, mask_reg
 	*(p++) = 0x2638000eu | (mask_reg << 9);
 
-#if SCRATCHPAD_STRIDED == 1
-	// v_and_b32 v29, s14, 56
-	*(p++) = 0xd113001du;
-	*(p++) = 0x0001700eu;
-
-	// s3 = batch_size
-	// v_mad_u32_u24 v28, v28, s3, v29
-	*(p++) = 0xd1c3001cu;
-	*(p++) = 0x0474071cu;
-#endif
-
 	return p;
 }
 
 __global uint* jit_scratchpad_calc_fixed_address(__global uint* p, uint imm32, uint batch_size)
 {
-#if SCRATCHPAD_STRIDED == 1
-	imm32 = mad24(imm32 & ~63u, batch_size, imm32 & 56);
-#endif
-
 	// v_mov_b32 v28, imm32
 	*(p++) = 0x7e3802ffu;
 	*(p++) = imm32;
@@ -182,17 +167,6 @@ __global uint* jit_scratchpad_calc_address_fp(__global uint* p, uint src, uint i
 
 	// v_and_b32 v28, s14, mask_reg
 	*(p++) = 0x2638000eu | (mask_reg << 9);
-
-#if SCRATCHPAD_STRIDED == 1
-	// v_and_b32 v29, s14, 56
-	*(p++) = 0xd113001du;
-	*(p++) = 0x0001700eu;
-
-	// s3 = batch_size
-	// v_mad_u32_u24 v28, v28, s3, v29
-	*(p++) = 0xd1c3001cu;
-	*(p++) = 0x0474071cu;
-#endif
 
 #if GCN_VERSION >= 14
 	// v_add_u32 v28, v28, v44
@@ -1527,15 +1501,12 @@ __attribute__((reqd_work_group_size(64, 1, 1)))
 __kernel void randomx_init(__global ulong* entropy, __global ulong* registers, __global uint2* intermediate_programs, __global uint* programs, uint batch_size)
 {
 	const uint global_index = get_global_id(0);
-	if ((global_index % HASHES_PER_GROUP) == 0)
 	{
-		__global uint2* p0 = intermediate_programs + (global_index / HASHES_PER_GROUP) * (INTERMEDIATE_PROGRAM_SIZE / sizeof(uint2));
-		__global uint* p = programs + (global_index / HASHES_PER_GROUP) * (COMPILED_PROGRAM_SIZE / sizeof(uint));
-		__global uint2* e = (__global uint2*)(entropy + (global_index / HASHES_PER_GROUP) * HASHES_PER_GROUP * (ENTROPY_SIZE / sizeof(ulong)) + (128 / sizeof(ulong)));
+		__global uint2* p0 = intermediate_programs + global_index * (INTERMEDIATE_PROGRAM_SIZE / sizeof(uint2));
+		__global uint* p = programs + global_index * (COMPILED_PROGRAM_SIZE / sizeof(uint));
+		__global uint2* e = (__global uint2*)(entropy + global_index * (ENTROPY_SIZE / sizeof(ulong)) + (128 / sizeof(ulong)));
 
-		#pragma unroll(1)
-		for (uint i = 0; i < HASHES_PER_GROUP; ++i, e += (ENTROPY_SIZE / sizeof(uint2)))
-			p = generate_jit_code(e, p0, p, i, batch_size);
+		p = generate_jit_code(e, p0, p, 0, batch_size);
 	}
 
 	__global ulong* R = registers + global_index * 32;
@@ -1552,14 +1523,15 @@ __kernel void randomx_init(__global ulong* entropy, __global ulong* registers, _
 	R[7] = 0;
 
 	// Group A registers
-	R[24] = getSmallPositiveFloatBits(entropy[0]);
-	R[25] = getSmallPositiveFloatBits(entropy[1]);
-	R[26] = getSmallPositiveFloatBits(entropy[2]);
-	R[27] = getSmallPositiveFloatBits(entropy[3]);
-	R[28] = getSmallPositiveFloatBits(entropy[4]);
-	R[29] = getSmallPositiveFloatBits(entropy[5]);
-	R[30] = getSmallPositiveFloatBits(entropy[6]);
-	R[31] = getSmallPositiveFloatBits(entropy[7]);
+	__global double* A = (__global double*)(R + 24);
+	A[0] = getSmallPositiveFloatBits(entropy[0]);
+	A[1] = getSmallPositiveFloatBits(entropy[1]);
+	A[2] = getSmallPositiveFloatBits(entropy[2]);
+	A[3] = getSmallPositiveFloatBits(entropy[3]);
+	A[4] = getSmallPositiveFloatBits(entropy[4]);
+	A[5] = getSmallPositiveFloatBits(entropy[5]);
+	A[6] = getSmallPositiveFloatBits(entropy[6]);
+	A[7] = getSmallPositiveFloatBits(entropy[7]);
 
 	// ma, mx
 	((__global uint*)(R + 16))[0] = entropy[8] & CacheLineAlignMask;
