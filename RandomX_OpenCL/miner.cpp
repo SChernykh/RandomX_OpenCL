@@ -208,7 +208,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 	ALLOCATE_DEVICE_MEMORY(rounding_gpu, ctx, intensity * sizeof(uint32_t));
 	ALLOCATE_DEVICE_MEMORY(blocktemplate_gpu, ctx, intensity * sizeof(blockTemplate));
 	ALLOCATE_DEVICE_MEMORY(intermediate_programs_gpu, ctx, portable ? 0 : (intensity * INTERMEDIATE_PROGRAM_SIZE));
-	ALLOCATE_DEVICE_MEMORY(compiled_programs_gpu, ctx, portable ? 0 : ((intensity / HASHES_PER_GROUP) * COMPILED_PROGRAM_SIZE));
+	ALLOCATE_DEVICE_MEMORY(compiled_programs_gpu, ctx, portable ? 0 : (intensity * COMPILED_PROGRAM_SIZE));
 
 	CL_CHECKED_CALL(clEnqueueWriteBuffer, ctx.queue, blocktemplate_gpu, CL_TRUE, 0, sizeof(blockTemplate), blockTemplate, 0, nullptr, nullptr);
 
