@@ -8,11 +8,11 @@ GPUs tested so far:
 
 Model|CryptonightR H/S|RandomX H/S|Relative speed|Comment
 -----|---------------|-----------|---------------|-------
-AMD Vega 64 (1700/1100 MHz)|2200|1211|55%|JIT compiled mode, 285W
-AMD Vega 64 (1100/800 MHz)|1023|830|81.1%|JIT compiled mode, 115W
+AMD Vega 64 (1700/1100 MHz)|2200|1225|55.7%|JIT compiled mode, 285W
+AMD Vega 64 (1100/800 MHz)|1023|845|82.6%|JIT compiled mode, 115W
 AMD Vega 64 (1700/1100 MHz)|2200|163|7.4%|VM interpreted mode
 AMD Vega FE (stock)|2150|980|45.6%|JIT compiled mode (intensity 4096)
-AMD Radeon RX 560 4GB (1400/2200 MHz)|495|259|52.3%|JIT compiled mode (intensity 896)
+AMD Radeon RX 560 4GB (1400/2200 MHz)|495|260|52.5%|JIT compiled mode (intensity 896)
 AMD Radeon RX RX470/570 4GB|930-950|400-410|43%|JIT compiled mode, 50W
 AMD Radeon RX RX480/580 4GB|960-1000|470|47%|JIT compiled mode, 60W
 GeForce GTX 1080 Ti (2037/11800 MHz)|927|601|64.8%|VM interpreted mode
