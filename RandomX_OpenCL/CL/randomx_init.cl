@@ -45,7 +45,7 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 #define RANDOMX_JUMP_BITS          8
 #define RANDOMX_JUMP_OFFSET        8
 
-// RANDOMX_FREQ_IADD_RS				12.5*25 = 312.5 bytes on average
+// RANDOMX_FREQ_IADD_RS				12.5*16 = 200 bytes on average
 // RANDOMX_FREQ_IADD_M				47.5*7 = 332.5 bytes on average
 // RANDOMX_FREQ_ISUB_R				8.5*16 = 136 bytes on average
 // RANDOMX_FREQ_ISUB_M				47.5*7 = 332.5 bytes on average
@@ -71,12 +71,12 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // RANDOMX_FREQ_FMUL_R				8*32 = 256 bytes
 // RANDOMX_FREQ_FDIV_M				36*4 = 144 bytes
 // RANDOMX_FREQ_FSQRT_R				4*6 = 24 bytes
-// RANDOMX_FREQ_CBRANCH				20*16 = 320 bytes
+// RANDOMX_FREQ_CBRANCH				20*25 = 500 bytes
 // RANDOMX_FREQ_CFROUND				20*1 = 20 bytes
 // RANDOMX_FREQ_ISTORE				28*16 = 448 bytes
 
-// Total: 4756.25 + 4(s_setpc_b64) = 4760.25 bytes on average
-// Real average program size: 4743 bytes
+// Total: 4823.75 + 4(s_setpc_b64) = 4827.75 bytes on average
+// Real average program size: 4810 bytes
 
 double getSmallPositiveFloatBits(const ulong entropy)
 {
