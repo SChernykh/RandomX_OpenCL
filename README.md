@@ -8,6 +8,7 @@ GPUs tested so far:
 
 Model|CryptonightR H/S|RandomX H/S|Relative speed|Comment
 -----|---------------|-----------|---------------|-------
+AMD Radeon VII (stock)|3125|1500|48%|JIT compiled mode, 150W
 AMD Vega 64 (1700/1100 MHz)|2200|1225|55.7%|JIT compiled mode, 285W
 AMD Vega 64 (1100/800 MHz)|1023|845|82.6%|JIT compiled mode, 115W
 AMD Vega 64 (1700/1100 MHz)|2200|163|7.4%|VM interpreted mode
