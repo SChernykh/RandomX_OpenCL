@@ -94,7 +94,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 
 		std::vector<char> t;
 		std::transform(ctx.device_name.begin(), ctx.device_name.end(), std::back_inserter(t), [](char c) { return static_cast<char>(std::toupper(c)); });
-		if (strcmp(t.data(), "GFX900") == 0)
+		if ((strcmp(t.data(), "GFX900") == 0) || (strcmp(t.data(), "GFX906") == 0))
 		{
 			gcn_binary = "randomx_run_gfx900.bin";
 			gcn_version = 14;
