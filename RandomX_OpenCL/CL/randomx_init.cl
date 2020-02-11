@@ -1504,7 +1504,11 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 	}
 
 	// Jump back to randomx_run kernel
+#if GCN_VERSION >= 15
+	*(p++) = 0xbe80200cu; // s_setpc_b64 s[12:13]
+#else
 	*(p++) = 0xbe801d0cu; // s_setpc_b64 s[12:13]
+#endif
 	return p;
 }
 

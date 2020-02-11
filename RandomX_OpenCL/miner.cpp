@@ -99,6 +99,11 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 			gcn_binary = "randomx_run_gfx900.bin";
 			gcn_version = 14;
 		}
+		else if ((strcmp(t.data(), "GFX1010") == 0) || (strcmp(t.data(), "GFX1011") == 0) || (strcmp(t.data(), "GFX1012") == 0))
+		{
+			gcn_binary = "randomx_run_gfx1010.bin";
+			gcn_version = 15;
+		}
 
 		std::stringstream options;
 		options << "-D GCN_VERSION=" << gcn_version;
@@ -382,6 +387,17 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 			CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_init, 1, nullptr, portable ? &global_work_size8 : &global_work_size32, portable ? &local_work_size32 : &local_work_size, 0, nullptr, nullptr);
 			if (portable)
 			{
+				//if (i == 0)
+				//{
+				//	CL_CHECKED_CALL(clFinish, ctx.queue);
+				//	std::vector<char> buf(intensity * VM_STATE_SIZE);
+				//	CL_CHECKED_CALL(clEnqueueReadBuffer, ctx.queue, vm_states_gpu, CL_TRUE, 0, buf.size(), buf.data(), 0, nullptr, nullptr);
+				//	FILE* fp;
+				//	fopen_s(&fp, "vm_states.bin", "wb");
+				//	fwrite(buf.data(), 1, buf.size(), fp);
+				//	fclose(fp);
+				//	return false;
+				//}
 				uint32_t first = 1;
 				uint32_t last = 0;
 				CL_CHECKED_CALL(clSetKernelArg, kernel_randomx_run, 6, sizeof(uint32_t), &first);
@@ -417,7 +433,7 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 				//	return false;
 				//}
 				CL_CHECKED_CALL(clFinish, ctx.queue);
-				CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_run, 1, nullptr, &global_work_size64, &local_work_size, 0, nullptr, nullptr);
+				CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_run, 1, nullptr, &global_work_size32, &local_work_size32, 0, nullptr, nullptr);
 			}
 
 			if (i == RANDOMX_PROGRAM_COUNT - 1)
