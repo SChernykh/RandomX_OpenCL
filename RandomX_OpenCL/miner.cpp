@@ -62,6 +62,8 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 		return false;
 	}
 
+	int gcn_version = 12;
+
 	if (portable)
 	{
 		switch (workers_per_hash)
@@ -90,7 +92,6 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 	else
 	{
 		const char* gcn_binary = "randomx_run_gfx803.bin";
-		int gcn_version = 12;
 
 		std::vector<char> t;
 		std::transform(ctx.device_name.begin(), ctx.device_name.end(), std::back_inserter(t), [](char c) { return static_cast<char>(std::toupper(c)); });
@@ -433,7 +434,14 @@ bool test_mining(uint32_t platform_id, uint32_t device_id, size_t intensity, uin
 				//	return false;
 				//}
 				CL_CHECKED_CALL(clFinish, ctx.queue);
-				CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_run, 1, nullptr, &global_work_size32, &local_work_size32, 0, nullptr, nullptr);
+				if (gcn_version == 15)
+				{
+					CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_run, 1, nullptr, &global_work_size32, &local_work_size32, 0, nullptr, nullptr);
+				}
+				else
+				{
+					CL_CHECKED_CALL(clEnqueueNDRangeKernel, ctx.queue, kernel_randomx_run, 1, nullptr, &global_work_size64, &local_work_size, 0, nullptr, nullptr);
+				}
 			}
 
 			if (i == RANDOMX_PROGRAM_COUNT - 1)
