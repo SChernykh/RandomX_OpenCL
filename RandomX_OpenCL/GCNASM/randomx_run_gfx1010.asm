@@ -90,10 +90,15 @@ randomx_run:
     s_icache_inv
     s_branch begin
 
+    # pgmrsrc2 = 0x0000008c, bits 1:5 = 6, so first 6 SGPRs (s0-s7) contain user data
+    # s6 contains group id
+    # v0 contains local id
 begin:
     # s[0:1] - pointer to registers
+    # s[2:3] - pointer to rounding modes
     s_load_dwordx4  s[0:3], s[4:5], 0x10
 
+    # s[8:9] - group_id*group_size
     s_mov_b32       s9, 0
     s_lshl_b32      s8, s6, 5
 
@@ -107,6 +112,17 @@ begin:
     v_cmp_gt_u32    vcc_lo, 8, v0
 
     s_waitcnt       lgkmcnt(0)
+
+    # load rounding mode
+    s_lshl_b32      s16, s6, 2
+    s_add_u32       s64, s2, s16
+    s_addc_u32      s65, s3, 0
+    v_mov_b32       v1, 0
+    global_load_dword v1, v1, s[64:65]
+    s_waitcnt       vmcnt(0)
+    v_readlane_b32  s66, v1, 0
+    s_setreg_b32    hwreg(mode, 2, 2), s66
+    s_mov_b32       s67, 0
 
     # ((__local ulong*) R)[sub] = ((__global ulong*) registers)[sub];
     s_lshl_b64      s[2:3], s[8:9], 3
@@ -230,6 +246,9 @@ begin:
     v_sub_nc_u32    v39, s22, 8
     v_sub_nc_u32    v50, s23, 8
 
+    # mask for FSCAL_R
+    v_mov_b32       v51, 0x80F00000
+
     # load scratchpad base address
     v_readlane_b32  s0, v12, 0
     v_readlane_b32  s1, v13, 0
@@ -240,11 +259,60 @@ begin:
 
     # v41 = 0 on lane 0, set it to 8 on lane 1
     # v44 = 0 on lane 0, set it to 4 on lane 1
-    v_writelane_b32 v41, 8, 1
-    v_writelane_b32 v44, 4, 1
+    s_mov_b64       exec, 2
+    v_mov_b32       v41, 8
+    v_mov_b32       v44, 4
+
+    # load group A registers
+    # Read low 8 bytes into lane 0 and high 8 bytes into lane 1
+    s_mov_b64       exec, 3
+    ds_read2_b64    v[52:55], v41 offset0:24 offset1:26
+    ds_read2_b64    v[56:59], v41 offset0:28 offset1:30
+
+    # xmantissaMask
+    v_mov_b32       v77, (1 << 24) - 1
+
+    # xexponentMask
+    ds_read_b64     v[78:79], v41 offset:160
+
+    # Restore execution mask
+    s_mov_b64       exec, 255
+
+    # sign mask (used in FSQRT_R)
+    v_mov_b32       v82, 0x80000000
+
+    # used in FSQRT_R to check for "positive normal value" (v_cmpx_class_f64)
+    s_mov_b32       s68, 256
+    s_mov_b32       s69, 0
+
+    # High 32 bits of "1.0" constant (used in FDIV_M)
+    v_mov_b32       v83, (1023 << 20)
+
+    # Used to multiply FP64 values by 0.5
+    v_mov_b32       v84, (1 << 20)
 
     s_getpc_b64 s[14:15]
 cur_addr:
+
+    # get addresses of FSQRT_R subroutines
+    s_add_u32       s40, s14, fsqrt_r_sub0 - cur_addr
+    s_addc_u32      s41, s15, 0
+    s_add_u32       s42, s14, fsqrt_r_sub1 - cur_addr
+    s_addc_u32      s43, s15, 0
+    s_add_u32       s44, s14, fsqrt_r_sub2 - cur_addr
+    s_addc_u32      s45, s15, 0
+    s_add_u32       s46, s14, fsqrt_r_sub3 - cur_addr
+    s_addc_u32      s47, s15, 0
+
+    # get addresses of FDIV_M subroutines
+    s_add_u32       s48, s14, fdiv_m_sub0 - cur_addr
+    s_addc_u32      s49, s15, 0
+    s_add_u32       s50, s14, fdiv_m_sub1 - cur_addr
+    s_addc_u32      s51, s15, 0
+    s_add_u32       s52, s14, fdiv_m_sub2 - cur_addr
+    s_addc_u32      s53, s15, 0
+    s_add_u32       s54, s14, fdiv_m_sub3 - cur_addr
+    s_addc_u32      s55, s15, 0
 
     # get address for ISMULH_R subroutine
     s_add_u32       s56, s14, ismulh_r_sub - cur_addr
@@ -255,8 +323,8 @@ cur_addr:
     s_addc_u32      s59, s15, 0
 
 /*
-    used: v0-v6, v8-v17, v20-v37
-    not used: v7, v18-v19
+    used: v0-v6, v8-v37
+    not used: v7
 */
 main_loop:
     s_waitcnt_vscnt null, 0x0
@@ -311,6 +379,28 @@ main_loop:
     v_xor_b32       v8, v25, v8
     v_xor_b32       v9, v26, v9
 
+    v_and_b32       v26, v4, v15
+
+    v_and_b32       v19, v4, v13
+    v_or_b32        v15, v26, v34
+    v_or_b32        v18, v12, v3
+    v_mov_b32       v26, 0
+    v_or_b32        v19, v19, v24
+    v_mov_b32       v25, v26
+    ds_write2_b64   v5, v[18:19], v[14:15] offset0:8 offset1:9
+
+    # load from dataset
+    global_load_dwordx2 v[18:19], v[29:30], off
+
+    # load group F,E registers
+    # Read low 8 bytes into lane 0 and high 8 bytes into lane 1
+    s_mov_b64       exec, 3
+    s_waitcnt       lgkmcnt(0)
+    ds_read2_b64    v[60:63], v41 offset0:8 offset1:10
+    ds_read2_b64    v[64:67], v41 offset0:12 offset1:14
+    ds_read2_b64    v[68:71], v41 offset0:16 offset1:18
+    ds_read2_b64    v[72:75], v41 offset0:20 offset1:22
+
     # load VM integer registers
     v_readlane_b32  s16, v8, 0
     v_readlane_b32  s17, v9, 0
@@ -329,23 +419,20 @@ main_loop:
     v_readlane_b32  s30, v8, 7
     v_readlane_b32  s31, v9, 7
 
-    v_and_b32       v26, v4, v15
-
-    v_and_b32       v9, v4, v13
-    v_or_b32        v15, v26, v34
-    v_or_b32        v8, v12, v3
-    v_mov_b32       v26, 0
-    v_or_b32        v9, v9, v24
-    v_mov_b32       v25, v26
-    ds_write2_b64   v5, v[8:9], v[14:15] offset0:8 offset1:9
-    s_waitcnt       vmcnt(0) & lgkmcnt(0)
-    s_waitcnt_vscnt null, 0x0
+    s_waitcnt       lgkmcnt(0)
 
     # Use only first 2 lanes for the program
     s_mov_b64       exec, 3
 
     # call JIT code
     s_swappc_b64    s[12:13], s[4:5]
+
+    # Write out group F,E registers
+    # Write low 8 bytes from lane 0 and high 8 bytes from lane 1
+    ds_write2_b64   v41, v[60:61], v[62:63] offset0:8 offset1:10
+    ds_write2_b64   v41, v[64:65], v[66:67] offset0:12 offset1:14
+    ds_write2_b64   v41, v[68:69], v[70:71] offset0:16 offset1:18
+    ds_write2_b64   v41, v[72:73], v[74:75] offset0:20 offset1:22
 
     # store VM integer registers
     v_writelane_b32 v8, s16, 0
@@ -372,9 +459,6 @@ main_loop:
     ds_write_b64    v6, v[8:9]
     s_waitcnt       lgkmcnt(0)
 
-    # load from dataset
-    global_load_dwordx2 v[8:9], v[29:30], off
-
     # R[readReg2], R[readReg3]
     ds_read_b32     v11, v21
     ds_read_b32     v27, v20
@@ -391,12 +475,12 @@ main_loop:
     # mx &= CacheLineAlignMask;
     v_and_b32       v11, 0x7fffffc0, v10
     v_mov_b32       v10, v33
-    s_waitcnt       vmcnt(0) & lgkmcnt(0)
+    s_waitcnt       lgkmcnt(0)
 
     # const ulong next_r = R[sub] ^ data;
     s_waitcnt       lgkmcnt(0)
-    v_xor_b32       v8, v27, v8
-    v_xor_b32       v9, v28, v9
+    v_xor_b32       v8, v27, v18
+    v_xor_b32       v9, v28, v19
 
     # *p1 = next_r;
     global_store_dwordx2 v[16:17], v[8:9], off
@@ -421,8 +505,201 @@ main_loop_end:
     global_store_dwordx2 v[1:2], v[29:30], off inst_offset:64
     global_store_dwordx2 v[1:2], v[27:28], off inst_offset:128
 
+    # store rounding mode
+    v_mov_b32       v0, 0
+    v_mov_b32       v1, s66
+    global_store_dword v0, v1, s[64:65]
+
 program_end:
     s_endpgm
+
+fsqrt_r_sub0:
+    s_setreg_b32    hwreg(mode, 2, 2), s67
+    v_rsq_f64       v[28:29], v[68:69]
+
+    # Improve initial approximation (can be skipped)
+    #v_mul_f64       v[42:43], v[28:29], v[68:69]
+    #v_mul_f64       v[48:49], v[28:29], -0.5
+    #v_fma_f64       v[48:49], v[48:49], v[42:43], 0.5
+    #v_fma_f64       v[28:29], v[28:29], v[48:49], v[28:29]
+
+    v_mul_f64       v[42:43], v[28:29], v[68:69]
+    v_mov_b32       v48, v28
+    v_sub_nc_u32    v49, v29, v84
+    v_mov_b32       v46, v28
+    v_xor_b32       v47, v49, v82
+    v_fma_f64       v[46:47], v[46:47], v[42:43], 0.5
+    v_fma_f64       v[42:43], v[42:43], v[46:47], v[42:43]
+    v_fma_f64       v[48:49], v[48:49], v[46:47], v[48:49]
+    v_fma_f64       v[46:47], -v[42:43], v[42:43], v[68:69]
+    s_setreg_b32    hwreg(mode, 2, 2), s66
+    v_fma_f64       v[42:43], v[46:47], v[48:49], v[42:43]
+    v_cmpx_class_f64 v[68:69], s[68:69]
+    v_mov_b32       v68, v42
+    v_mov_b32       v69, v43
+    s_mov_b64       exec, 3
+    s_setpc_b64     s[60:61]
+
+fsqrt_r_sub1:
+    s_setreg_b32    hwreg(mode, 2, 2), s67
+    v_rsq_f64       v[28:29], v[70:71]
+
+    # Improve initial approximation (can be skipped)
+    #v_mul_f64       v[42:43], v[28:29], v[70:71]
+    #v_mul_f64       v[48:49], v[28:29], -0.5
+    #v_fma_f64       v[48:49], v[48:49], v[42:43], 0.5
+    #v_fma_f64       v[28:29], v[28:29], v[48:49], v[28:29]
+
+    v_mul_f64       v[42:43], v[28:29], v[70:71]
+    v_mov_b32       v48, v28
+    v_sub_nc_u32    v49, v29, v84
+    v_mov_b32       v46, v28
+    v_xor_b32       v47, v49, v82
+    v_fma_f64       v[46:47], v[46:47], v[42:43], 0.5
+    v_fma_f64       v[42:43], v[42:43], v[46:47], v[42:43]
+    v_fma_f64       v[48:49], v[48:49], v[46:47], v[48:49]
+    v_fma_f64       v[46:47], -v[42:43], v[42:43], v[70:71]
+    s_setreg_b32    hwreg(mode, 2, 2), s66
+    v_fma_f64       v[42:43], v[46:47], v[48:49], v[42:43]
+    v_cmpx_class_f64 v[70:71], s[68:69]
+    v_mov_b32       v70, v42
+    v_mov_b32       v71, v43
+    s_mov_b64       exec, 3
+    s_setpc_b64     s[60:61]
+
+fsqrt_r_sub2:
+    s_setreg_b32    hwreg(mode, 2, 2), s67
+    v_rsq_f64       v[28:29], v[72:73]
+
+    # Improve initial approximation (can be skipped)
+    #v_mul_f64       v[42:43], v[28:29], v[72:73]
+    #v_mul_f64       v[48:49], v[28:29], -0.5
+    #v_fma_f64       v[48:49], v[48:49], v[42:43], 0.5
+    #v_fma_f64       v[28:29], v[28:29], v[48:49], v[28:29]
+
+    v_mul_f64       v[42:43], v[28:29], v[72:73]
+    v_mov_b32       v48, v28
+    v_sub_nc_u32    v49, v29, v84
+    v_mov_b32       v46, v28
+    v_xor_b32       v47, v49, v82
+    v_fma_f64       v[46:47], v[46:47], v[42:43], 0.5
+    v_fma_f64       v[42:43], v[42:43], v[46:47], v[42:43]
+    v_fma_f64       v[48:49], v[48:49], v[46:47], v[48:49]
+    v_fma_f64       v[46:47], -v[42:43], v[42:43], v[72:73]
+    s_setreg_b32    hwreg(mode, 2, 2), s66
+    v_fma_f64       v[42:43], v[46:47], v[48:49], v[42:43]
+    v_cmpx_class_f64 v[72:73], s[68:69]
+    v_mov_b32       v72, v42
+    v_mov_b32       v73, v43
+    s_mov_b64       exec, 3
+    s_setpc_b64     s[60:61]
+
+fsqrt_r_sub3:
+    s_setreg_b32    hwreg(mode, 2, 2), s67
+    v_rsq_f64       v[28:29], v[74:75]
+
+    # Improve initial approximation (can be skipped)
+    #v_mul_f64       v[42:43], v[28:29], v[74:75]
+    #v_mul_f64       v[48:49], v[28:29], -0.5
+    #v_fma_f64       v[48:49], v[48:49], v[42:43], 0.5
+    #v_fma_f64       v[28:29], v[28:29], v[48:49], v[28:29]
+
+    v_mul_f64       v[42:43], v[28:29], v[74:75]
+    v_mov_b32       v48, v28
+    v_sub_nc_u32    v49, v29, v84
+    v_mov_b32       v46, v28
+    v_xor_b32       v47, v49, v82
+    v_fma_f64       v[46:47], v[46:47], v[42:43], 0.5
+    v_fma_f64       v[42:43], v[42:43], v[46:47], v[42:43]
+    v_fma_f64       v[48:49], v[48:49], v[46:47], v[48:49]
+    v_fma_f64       v[46:47], -v[42:43], v[42:43], v[74:75]
+    s_setreg_b32    hwreg(mode, 2, 2), s66
+    v_fma_f64       v[42:43], v[46:47], v[48:49], v[42:43]
+    v_cmpx_class_f64 v[74:75], s[68:69]
+    v_mov_b32       v74, v42
+    v_mov_b32       v75, v43
+    s_mov_b64       exec, 3
+    s_setpc_b64     s[60:61]
+
+fdiv_m_sub0:
+    v_or_b32        v28, v28, v78
+    v_and_or_b32    v29, v29, v77, v79
+    s_setreg_b32    hwreg(mode, 2, 2), s67
+    v_rcp_f64       v[48:49], v[28:29]
+    v_fma_f64       v[80:81], -v[28:29], v[48:49], 1.0
+    v_fma_f64       v[48:49], v[48:49], v[80:81], v[48:49]
+    v_mul_f64       v[80:81], v[68:69], v[48:49]
+    v_fma_f64       v[42:43], -v[28:29], v[80:81], v[68:69]
+    s_setreg_b32    hwreg(mode, 2, 2), s66
+    v_fma_f64  v[42:43], v[42:43], v[48:49], v[80:81]
+    v_div_fixup_f64 v[80:81], v[42:43], v[28:29], v[68:69]
+    v_cmpx_eq_f64   v[68:69], v[28:29]
+    v_mov_b32 v80, 0
+    v_mov_b32 v81, v83
+    s_mov_b64       exec, 3
+    v_mov_b32       v68, v80
+    v_mov_b32       v69, v81
+    s_setpc_b64     s[60:61]
+
+fdiv_m_sub1:
+    v_or_b32        v28, v28, v78
+    v_and_or_b32    v29, v29, v77, v79
+    s_setreg_b32    hwreg(mode, 2, 2), s67
+    v_rcp_f64       v[48:49], v[28:29]
+    v_fma_f64       v[80:81], -v[28:29], v[48:49], 1.0
+    v_fma_f64       v[48:49], v[48:49], v[80:81], v[48:49]
+    v_mul_f64       v[80:81], v[70:71], v[48:49]
+    v_fma_f64       v[42:43], -v[28:29], v[80:81], v[70:71]
+    s_setreg_b32    hwreg(mode, 2, 2), s66
+    v_fma_f64  v[42:43], v[42:43], v[48:49], v[80:81]
+    v_div_fixup_f64 v[80:81], v[42:43], v[28:29], v[70:71]
+    v_cmpx_eq_f64   v[70:71], v[28:29]
+    v_mov_b32 v80, 0
+    v_mov_b32 v81, v83
+    s_mov_b64       exec, 3
+    v_mov_b32       v70, v80
+    v_mov_b32       v71, v81
+    s_setpc_b64     s[60:61]
+
+fdiv_m_sub2:
+    v_or_b32        v28, v28, v78
+    v_and_or_b32    v29, v29, v77, v79
+    s_setreg_b32    hwreg(mode, 2, 2), s67
+    v_rcp_f64       v[48:49], v[28:29]
+    v_fma_f64       v[80:81], -v[28:29], v[48:49], 1.0
+    v_fma_f64       v[48:49], v[48:49], v[80:81], v[48:49]
+    v_mul_f64       v[80:81], v[72:73], v[48:49]
+    v_fma_f64       v[42:43], -v[28:29], v[80:81], v[72:73]
+    s_setreg_b32    hwreg(mode, 2, 2), s66
+    v_fma_f64  v[42:43], v[42:43], v[48:49], v[80:81]
+    v_div_fixup_f64 v[80:81], v[42:43], v[28:29], v[72:73]
+    v_cmpx_eq_f64   v[72:73], v[28:29]
+    v_mov_b32 v80, 0
+    v_mov_b32 v81, v83
+    s_mov_b64       exec, 3
+    v_mov_b32       v72, v80
+    v_mov_b32       v73, v81
+    s_setpc_b64     s[60:61]
+
+fdiv_m_sub3:
+    v_or_b32        v28, v28, v78
+    v_and_or_b32    v29, v29, v77, v79
+    s_setreg_b32    hwreg(mode, 2, 2), s67
+    v_rcp_f64       v[48:49], v[28:29]
+    v_fma_f64       v[80:81], -v[28:29], v[48:49], 1.0
+    v_fma_f64       v[48:49], v[48:49], v[80:81], v[48:49]
+    v_mul_f64       v[80:81], v[74:75], v[48:49]
+    v_fma_f64       v[42:43], -v[28:29], v[80:81], v[74:75]
+    s_setreg_b32    hwreg(mode, 2, 2), s66
+    v_fma_f64  v[42:43], v[42:43], v[48:49], v[80:81]
+    v_div_fixup_f64 v[80:81], v[42:43], v[28:29], v[74:75]
+    v_cmpx_eq_f64   v[74:75], v[28:29]
+    v_mov_b32 v80, 0
+    v_mov_b32 v81, v83
+    s_mov_b64       exec, 3
+    v_mov_b32       v74, v80
+    v_mov_b32       v75, v81
+    s_setpc_b64     s[60:61]
 
 ismulh_r_sub:
     s_mov_b64       exec, 1
