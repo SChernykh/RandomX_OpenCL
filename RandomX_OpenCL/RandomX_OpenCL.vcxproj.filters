@@ -80,5 +80,8 @@
     <CustomBuild Include="GCNASM\randomx_run_gfx900.asm">
       <Filter>Source Files\GCNASM</Filter>
     </CustomBuild>
+    <CustomBuild Include="GCNASM\randomx_run_gfx1010.asm">
+      <Filter>Source Files\GCNASM</Filter>
+    </CustomBuild>
   </ItemGroup>
 </Project>

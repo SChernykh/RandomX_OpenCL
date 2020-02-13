@@ -39,14 +39,13 @@ double load_F_E_groups(int value, ulong andMask, ulong orMask)
 }
 
 // This kernel is only used to dump binary and disassemble it into randomx_run.asm
-__attribute__((reqd_work_group_size(64, 1, 1)))
+__attribute__((reqd_work_group_size(32, 1, 1)))
 __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratchpad, __global ulong* registers, __global uint* rounding_modes, __global uint* programs, uint batch_size, uint rx_parameters)
 {
 	__local ulong2 R_buf[REGISTERS_COUNT / 2];
 
-	const uint global_index = get_global_id(0);
-	const uint idx = global_index / 64;
-	const uint sub = global_index % 64;
+	const uint idx = get_group_id(0);
+	const uint sub = get_local_id(0);
 
 	const uint program_iterations = 1U << (rx_parameters >> 15);
 	const uint ScratchpadL3Size = 1U << ((rx_parameters >> 10) & 31);
@@ -62,8 +61,8 @@ __kernel void randomx_run(__global const uchar* dataset, __global uchar* scratch
 	rounding_modes += idx;
 	programs += get_group_id(0) * (COMPILED_PROGRAM_SIZE / sizeof(uint));
 
-	// Copy registers (256 bytes) into shared memory: 64 workers, 4 bytes for each worker
-	((__local uint*) R)[sub] = ((__global uint*) registers)[sub];
+	// Copy registers (256 bytes) into shared memory: 32 workers, 8 bytes for each worker
+	((__local ulong*) R)[sub] = ((__global ulong*) registers)[sub];
 	barrier(CLK_LOCAL_MEM_FENCE);
 
 	if (sub >= 8)

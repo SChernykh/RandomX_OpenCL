@@ -78,6 +78,62 @@ along with RandomX OpenCL. If not, see <http://www.gnu.org/licenses/>.
 // Total: 4823.75 + 4(s_setpc_b64) = 4827.75 bytes on average
 // Real average program size: 4810 bytes
 
+#if GCN_VERSION >= 15
+
+#define S_SETPC_B64_S12_13 0xbe80200cu
+#define V_AND_B32_CALC_ADDRESS 0x3638000eu
+#define GLOBAL_LOAD_DWORDX2_SCRATCHPAD_LOAD 0xdc348000u
+#define S_WAITCNT_SCRATCHPAD_LOAD2 0xbf8c3f70u
+#define V_READLANE_B32_SCRATCHPAD_LOAD2 0xd7600000u
+#define S_MUL_HI_U32_IMUL_R 0x9a8f1010u
+#define S_MUL_I32_IMUL 0x93000000u
+#define S_MUL_HI_U32_IMUL_R_2 0x9a8fff10u
+#define S_MUL_HI_U32_IMUL_M 0x9aa10e10u
+#define S_MOV_B32_IMUL_RCP 0xbea003ffu
+#define S_MUL_HI_U32_IMUL_RCP 0x9a8f2010u
+#define S_XOR_B32_64 0x89000000u
+#define S_MOV_B32_XOR_R 0xbebe03ffu
+#define S_LSHR 0x90000000u
+#define S_LSHL 0x8f000000u
+#define S_OR 0x88000000u
+#define S_AND 0x87000000u
+#define S_BFE 0x94000000u
+#define DS_SWIZZLE_B32_FSWAP_R 0xd8d48001u
+#define V_ADD_F64 0xd564003cu
+#define V_AND_B32 0x36000000u
+#define GLOBAL_LOAD_DWORD_SCRATCHPAD_LOAD_FP 0xdc308000u
+#define V_XOR_B32 0x3a000000u
+#define V_MUL_F64 0xd5650044u
+
+#else
+
+#define S_SETPC_B64_S12_13 0xbe801d0cu
+#define V_AND_B32_CALC_ADDRESS 0x2638000eu
+#define GLOBAL_LOAD_DWORDX2_SCRATCHPAD_LOAD 0xdc548000u
+#define S_WAITCNT_SCRATCHPAD_LOAD2 0xbf8c0f70u
+#define V_READLANE_B32_SCRATCHPAD_LOAD2 0xd2890000u
+#define S_MUL_HI_U32_IMUL_R 0x960f1010u
+#define S_MUL_I32_IMUL 0x92000000u
+#define S_MUL_HI_U32_IMUL_R_2 0x960fff10u
+#define S_MUL_HI_U32_IMUL_M 0x96210e10u
+#define S_MOV_B32_IMUL_RCP 0xbea000ffu
+#define S_MUL_HI_U32_IMUL_RCP 0x960f2010u
+#define S_XOR_B32_64 0x88000000u
+#define S_MOV_B32_XOR_R 0xbebe00ffu
+#define S_LSHR 0x8f000000u
+#define S_LSHL 0x8e000000u
+#define S_OR 0x87000000u
+#define S_AND 0x86000000u
+#define S_BFE 0x93000000u
+#define DS_SWIZZLE_B32_FSWAP_R 0xd87a8001u
+#define V_ADD_F64 0xd280003cu
+#define V_AND_B32 0x26000000u
+#define GLOBAL_LOAD_DWORD_SCRATCHPAD_LOAD_FP 0xdc508000u
+#define V_XOR_B32 0x2a000000u
+#define V_MUL_F64 0xd2810044u
+
+#endif
+
 double getSmallPositiveFloatBits(const ulong entropy)
 {
 	ulong exponent = entropy >> 59;
@@ -109,7 +165,7 @@ __global uint* jit_scratchpad_calc_address(__global uint* p, uint src, uint imm3
 	*(p++) = imm32;
 
 	// v_and_b32 v28, s14, mask_reg
-	*(p++) = 0x2638000eu | (mask_reg << 9);
+	*(p++) = V_AND_B32_CALC_ADDRESS | (mask_reg << 9);
 
 	return p;
 }
@@ -129,7 +185,7 @@ __global uint* jit_scratchpad_load(__global uint* p, uint vgpr_index)
 
 #if GCN_VERSION >= 14
 	// global_load_dwordx2 v[vgpr_index:vgpr_index+1], v28, s[0:1]
-	*(p++) = 0xdc548000u;
+	*(p++) = GLOBAL_LOAD_DWORDX2_SCRATCHPAD_LOAD;
 	*(p++) = 0x0000001cu | (vgpr_index << 24);
 #else
 	*(p++) = 0x32543902u;						// v_add_u32 v42, vcc, v2, v28
@@ -146,14 +202,14 @@ __global uint* jit_scratchpad_load2(__global uint* p, uint vgpr_index, int vmcnt
 {
 	// s_waitcnt vmcnt(N)
 	if (vmcnt >= 0)
-		*(p++) = 0xbf8c0f70u | (vmcnt & 15) | ((vmcnt >> 4) << 14);
+		*(p++) = S_WAITCNT_SCRATCHPAD_LOAD2 | (vmcnt & 15) | ((vmcnt >> 4) << 14);
 
 	// v_readlane_b32 s14, vgpr_index, 0
-	*(p++) = 0xd289000eu;
+	*(p++) = V_READLANE_B32_SCRATCHPAD_LOAD2 | 14;
 	*(p++) = 0x00010100u | vgpr_index;
 
 	// v_readlane_b32 s15, vgpr_index + 1, 0
-	*(p++) = 0xd289000fu;
+	*(p++) = V_READLANE_B32_SCRATCHPAD_LOAD2 | 15;
 	*(p++) = 0x00010100u | (vgpr_index + 1);
 
 	return p;
@@ -166,9 +222,12 @@ __global uint* jit_scratchpad_calc_address_fp(__global uint* p, uint src, uint i
 	*(p++) = imm32;
 
 	// v_and_b32 v28, s14, mask_reg
-	*(p++) = 0x2638000eu | (mask_reg << 9);
+	*(p++) = V_AND_B32 | 0x38000eu | (mask_reg << 9);
 
-#if GCN_VERSION >= 14
+#if GCN_VERSION >= 15
+	// v_add_nc_u32 v28, v28, v44
+	*(p++) = 0x4a38591cu;
+#elif GCN_VERSION == 14
 	// v_add_u32 v28, v28, v44
 	*(p++) = 0x6838591cu;
 #else
@@ -185,7 +244,7 @@ __global uint* jit_scratchpad_load_fp(__global uint* p, uint vgpr_index)
 
 #if GCN_VERSION >= 14
 	// global_load_dword v(vgpr_index), v28, s[0:1]
-	*(p++) = 0xdc508000u;
+	*(p++) = GLOBAL_LOAD_DWORD_SCRATCHPAD_LOAD_FP;
 	*(p++) = 0x0000001cu | (vgpr_index << 24);
 #else
 	*(p++) = 0x32543902u;						// v_add_u32 v42, vcc, v2, v28
@@ -202,7 +261,7 @@ __global uint* jit_scratchpad_load2_fp(__global uint* p, uint vgpr_index, int vm
 {
 	// s_waitcnt vmcnt(N)
 	if (vmcnt >= 0)
-		*(p++) = 0xbf8c0f70u | (vmcnt & 15) | ((vmcnt >> 4) << 14);
+		*(p++) = S_WAITCNT_SCRATCHPAD_LOAD2 | (vmcnt & 15) | ((vmcnt >> 4) << 14);
 
 	// v_cvt_f64_i32 v[28:29], vgpr_index
 	*(p++) = 0x7e380900u | vgpr_index;
@@ -242,7 +301,7 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		if (shift > 0) // p = 3/4
 		{
 			// s_lshl_b64 s[14:15], s[(16 + src * 2):(17 + src * 2)], shift
-			*(p++) = 0x8e8e8010u | (src << 1) | (shift << 8);
+			*(p++) = S_LSHL | 0x8e8010u | (src << 1) | (shift << 8);
 
 			// s_add_u32 s(16 + dst * 2), s(16 + dst * 2), s14
 			*(p++) = 0x80100e10u | (dst << 1) | (dst << 17);
@@ -361,7 +420,7 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		{
 #if GCN_VERSION >= 14
 			// s_mul_hi_u32 s15, s(16 + dst * 2), s(16 + src * 2)
-			*(p++) = 0x960f1010u | (dst << 1) | (src << 9);
+			*(p++) = S_MUL_HI_U32_IMUL_R | (dst << 1) | (src << 9);
 #else
 			// v_mov_b32 v28, s(16 + dst * 2)
 			*(p++) = 0x7e380210u | (dst << 1);
@@ -374,25 +433,25 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 #endif
 
 			// s_mul_i32 s14, s(16 + dst * 2), s(17 + src * 2)
-			*(p++) = 0x920e1110u | (dst << 1) | (src << 9);
+			*(p++) = S_MUL_I32_IMUL | 0x0e1110u | (dst << 1) | (src << 9);
 
 			// s_add_u32 s15, s15, s14
 			*(p++) = 0x800f0e0fu;
 
 			// s_mul_i32 s14, s(17 + dst * 2), s(16 + src * 2)
-			*(p++) = 0x920e1011u | (dst << 1) | (src << 9);
+			*(p++) = S_MUL_I32_IMUL | 0x0e1011u | (dst << 1) | (src << 9);
 
 			// s_add_u32 s(17 + dst * 2), s15, s14
 			*(p++) = 0x80110e0fu | (dst << 17);
 
 			// s_mul_i32 s(16 + dst * 2), s(16 + dst * 2), s(16 + src * 2)
-			*(p++) = 0x92101010u | (dst << 1) | (dst << 17) | (src << 9);
+			*(p++) = S_MUL_I32_IMUL | 0x101010u | (dst << 1) | (dst << 17) | (src << 9);
 		}
 		else // p = 1/8
 		{
 #if GCN_VERSION >= 14
 			// s_mul_hi_u32 s15, s(16 + dst * 2), imm32
-			*(p++) = 0x960fff10u | (dst << 1);
+			*(p++) = S_MUL_HI_U32_IMUL_R_2 | (dst << 1);
 			*(p++) = inst.y;
 #else
 			// v_mov_b32 v28, imm32
@@ -413,14 +472,14 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			}
 
 			// s_mul_i32 s14, s(17 + dst * 2), imm32
-			*(p++) = 0x920eff11u | (dst << 1);
+			*(p++) = S_MUL_I32_IMUL | 0x0eff11u | (dst << 1);
 			*(p++) = inst.y;
 
 			// s_add_u32 s(17 + dst * 2), s15, s14
 			*(p++) = 0x80110e0fu | (dst << 17);
 
 			// s_mul_i32 s(16 + dst * 2), s(16 + dst * 2), imm32
-			*(p++) = 0x9210ff10u | (dst << 1) | (dst << 17);
+			*(p++) = S_MUL_I32_IMUL | 0x10ff10u | (dst << 1) | (dst << 17);
 			*(p++) = inst.y;
 		}
 
@@ -447,7 +506,7 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 
 #if GCN_VERSION >= 14
 			// s_mul_hi_u32 s33, s(16 + dst * 2), s14
-			*(p++) = 0x96210e10u | (dst << 1);
+			*(p++) = S_MUL_HI_U32_IMUL_M | (dst << 1);
 #else
 			// v_mov_b32 v28, s(16 + dst * 2)
 			*(p++) = 0x7e380210u | (dst << 1);
@@ -460,19 +519,19 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 #endif
 
 			// s_mul_i32 s32, s(16 + dst * 2), s15
-			*(p++) = 0x92200f10u | (dst << 1);
+			*(p++) = S_MUL_I32_IMUL | 0x200f10u | (dst << 1);
 
 			// s_add_u32 s33, s33, s32
 			*(p++) = 0x80212021u;
 
 			// s_mul_i32 s32, s(17 + dst * 2), s14
-			*(p++) = 0x92200e11u | (dst << 1);
+			*(p++) = S_MUL_I32_IMUL | 0x200e11u | (dst << 1);
 
 			// s_add_u32 s(17 + dst * 2), s33, s32
 			*(p++) = 0x80112021u | (dst << 17);
 
 			// s_mul_i32 s(16 + dst * 2), s(16 + dst * 2), s14
-			*(p++) = 0x92100e10u | (dst << 1) | (dst << 17);
+			*(p++) = S_MUL_I32_IMUL | 0x100e10u | (dst << 1) | (dst << 17);
 		}
 
 		// (12*7/8 + 8*1/8 + 28) + 24 = 63.5 bytes on average
@@ -482,10 +541,17 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 
 	if (opcode < RANDOMX_FREQ_IMULH_R)
 	{
+#if GCN_VERSION >= 15
+		*(p++) = 0xbe8e0410u | (dst << 1);				// s_mov_b64 s[14:15], s[16 + dst * 2:17 + dst * 2]
+		*(p++) = 0xbea60410u | (src << 1);				// s_mov_b64 s[38:39], s[16 + src * 2:17 + src * 2]
+		*(p++) = 0xbebc213au;							// s_swappc_b64 s[60:61], s[58:59]
+		*(p++) = 0xbe90040eu | (dst << 17);				// s_mov_b64 s[16 + dst * 2:17 + dst * 2], s[14:15]
+#else
 		*(p++) = 0xbe8e0110u | (dst << 1);				// s_mov_b64 s[14:15], s[16 + dst * 2:17 + dst * 2]
 		*(p++) = 0xbea60110u | (src << 1);				// s_mov_b64 s[38:39], s[16 + src * 2:17 + src * 2]
 		*(p++) = 0xbebc1e3au;							// s_swappc_b64 s[60:61], s[58:59]
 		*(p++) = 0xbe90010eu | (dst << 17);				// s_mov_b64 s[16 + dst * 2:17 + dst * 2], s[14:15]
+#endif
 
 		// 16 bytes
 		return p;
@@ -508,9 +574,15 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		{
 			p = jit_scratchpad_load2(p, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
 
+#if GCN_VERSION >= 15
+			*(p++) = 0xbea60410u | (dst << 1);				// s_mov_b64 s[38:39], s[16 + src * 2:17 + src * 2]
+			*(p++) = 0xbebc213au;							// s_swappc_b64 s[60:61], s[58:59]
+			*(p++) = 0xbe90040eu | (dst << 17);				// s_mov_b64 s[16 + dst * 2:17 + dst * 2], s[14:15]
+#else
 			*(p++) = 0xbea60110u | (dst << 1);				// s_mov_b64 s[38:39], s[16 + src * 2:17 + src * 2]
 			*(p++) = 0xbebc1e3au;							// s_swappc_b64 s[60:61], s[58:59]
 			*(p++) = 0xbe90010eu | (dst << 17);				// s_mov_b64 s[16 + dst * 2:17 + dst * 2], s[14:15]
+#endif
 		}
 
 		// (12*7/8 + 8*1/8 + 28) + 12 = 51.5 bytes on average
@@ -520,10 +592,17 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 
 	if (opcode < RANDOMX_FREQ_ISMULH_R)
 	{
+#if GCN_VERSION >= 15
+		*(p++) = 0xbe8e0410u | (dst << 1);				// s_mov_b64 s[14:15], s[16 + dst * 2:17 + dst * 2]
+		*(p++) = 0xbea60410u | (src << 1);				// s_mov_b64 s[38:39], s[16 + src * 2:17 + src * 2]
+		*(p++) = 0xbebc2138u;							// s_swappc_b64 s[60:61], s[56:57]
+		*(p++) = 0xbe90040eu | (dst << 17);				// s_mov_b64 s[16 + dst * 2:17 + dst * 2], s[14:15]
+#else
 		*(p++) = 0xbe8e0110u | (dst << 1);				// s_mov_b64 s[14:15], s[16 + dst * 2:17 + dst * 2]
 		*(p++) = 0xbea60110u | (src << 1);				// s_mov_b64 s[38:39], s[16 + src * 2:17 + src * 2]
 		*(p++) = 0xbebc1e38u;							// s_swappc_b64 s[60:61], s[56:57]
 		*(p++) = 0xbe90010eu | (dst << 17);				// s_mov_b64 s[16 + dst * 2:17 + dst * 2], s[14:15]
+#endif
 
 		// 16 bytes
 		return p;
@@ -546,9 +625,15 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		{
 			p = jit_scratchpad_load2(p, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
 
+#if GCN_VERSION >= 15
+			*(p++) = 0xbea60410u | (dst << 1);				// s_mov_b64 s[38:39], s[16 + dst * 2:17 + dst * 2]
+			*(p++) = 0xbebc2138u;							// s_swappc_b64 s[60:61], s[56:57]
+			*(p++) = 0xbe90040eu | (dst << 17);				// s_mov_b64 s[16 + dst * 2:17 + dst * 2], s[14:15]
+#else
 			*(p++) = 0xbea60110u | (dst << 1);				// s_mov_b64 s[38:39], s[16 + dst * 2:17 + dst * 2]
 			*(p++) = 0xbebc1e38u;							// s_swappc_b64 s[60:61], s[56:57]
 			*(p++) = 0xbe90010eu | (dst << 17);				// s_mov_b64 s[16 + dst * 2:17 + dst * 2], s[14:15]
+#endif
 		}
 
 		// (12*7/8 + 8*1/8 + 28) + 12 = 51.5 bytes on average
@@ -562,10 +647,10 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		{
 			const uint2 rcp_value = as_uint2(imul_rcp_value(inst.y));
 
-			*(p++) = 0xbea000ffu;							// s_mov_b32       s32, imm32
+			*(p++) = S_MOV_B32_IMUL_RCP;					// s_mov_b32       s32, imm32
 			*(p++) = rcp_value.x;
 #if GCN_VERSION >= 14
-			*(p++) = 0x960f2010u | (dst << 1);				// s_mul_hi_u32    s15, s(16 + dst * 2), s32
+			*(p++) = S_MUL_HI_U32_IMUL_RCP | (dst << 1);				// s_mul_hi_u32    s15, s(16 + dst * 2), s32
 #else
 			// v_mov_b32 v28, s32
 			*(p++) = 0x7e380220u;
@@ -576,12 +661,12 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			*(p++) = 0xd289000fu;
 			*(p++) = 0x0001011cu;
 #endif
-			*(p++) = 0x920eff10u | (dst << 1);				// s_mul_i32       s14, s(16 + dst * 2), imm32
+			*(p++) = S_MUL_I32_IMUL | 0x0eff10u | (dst << 1);				// s_mul_i32       s14, s(16 + dst * 2), imm32
 			*(p++) = rcp_value.y;
 			*(p++) = 0x800f0e0fu;							// s_add_u32       s15, s15, s14
-			*(p++) = 0x920e2011u | (dst << 1);				// s_mul_i32       s14, s(17 + dst * 2), s32
+			*(p++) = S_MUL_I32_IMUL | 0x0e2011u | (dst << 1);				// s_mul_i32       s14, s(17 + dst * 2), s32
 			*(p++) = 0x80110e0fu | (dst << 17);				// s_add_u32       s(17 + dst * 2), s15, s14
-			*(p++) = 0x92102010u | (dst << 1) | (dst << 17);// s_mul_i32       s(16 + dst * 2), s(16 + dst * 2), s32
+			*(p++) = S_MUL_I32_IMUL | 0x102010u | (dst << 1) | (dst << 17);// s_mul_i32       s(16 + dst * 2), s(16 + dst * 2), s32
 		}
 
 		// 36 bytes
@@ -604,23 +689,23 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		if (src != dst) // p = 7/8
 		{
 			// s_xor_b64 s[16 + dst * 2:17 + dst * 2], s[16 + dst * 2:17 + dst * 2], s[16 + src * 2:17 + src * 2]
-			*(p++) = 0x88901010u | (dst << 1) | (dst << 17) | (src << 9);
+			*(p++) = S_XOR_B32_64 | 0x901010u | (dst << 1) | (dst << 17) | (src << 9);
 		}
 		else // p = 1/8
 		{
 			if (as_int(inst.y) < 0) // p = 1/2
 			{
 				// s_mov_b32 s62, imm32
-				*(p++) = 0xbebe00ffu;
+				*(p++) = S_MOV_B32_XOR_R;
 				*(p++) = inst.y;
 
 				// s_xor_b64 s[16 + dst * 2:17 + dst * 2], s[16 + dst * 2:17 + dst * 2], s[62:63]
-				*(p++) = 0x88903e10u | (dst << 1) | (dst << 17);
+				*(p++) = S_XOR_B32_64 | 0x903e10u | (dst << 1) | (dst << 17);
 			}
 			else
 			{
 				// s_xor_b32 s(16 + dst * 2), s(16 + dst * 2), imm32
-				*(p++) = 0x8810ff10u | (dst << 1) | (dst << 17);
+				*(p++) = S_XOR_B32_64 | 0x10ff10u | (dst << 1) | (dst << 17);
 				*(p++) = inst.y;
 			}
 		}
@@ -647,7 +732,7 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			p = jit_scratchpad_load2(p, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
 
 			// s_xor_b64 s[16 + dst * 2:17 + dst * 2], s[16 + dst * 2:17 + dst * 2], s[14:15]
-			*(p++) = 0x88900e10u | (dst << 1) | (dst << 17);
+			*(p++) = S_XOR_B32_64 | 0x900e10u | (dst << 1) | (dst << 17);
 		}
 
 		// (12*7/8 + 8*1/8 + 28) + 4 = 43.5 bytes on average
@@ -662,24 +747,24 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			if (opcode < RANDOMX_FREQ_IROR_R)
 			{
 				// s_lshr_b64 s[32:33], s[16 + dst * 2:17 + dst * 2], s(16 + src * 2)
-				*(p++) = 0x8fa01010u | (dst << 1) | (src << 9);
+				*(p++) = S_LSHR | 0xa01010u | (dst << 1) | (src << 9);
 
 				// s_sub_u32  s15, 64, s(16 + src * 2)
 				*(p++) = 0x808f10c0u | (src << 9);
 
 				// s_lshl_b64 s[34:35], s[16 + dst * 2:17 + dst * 2], s15
-				*(p++) = 0x8ea20f10u | (dst << 1);
+				*(p++) = S_LSHL | 0xa20f10u | (dst << 1);
 			}
 			else
 			{
 				// s_lshl_b64 s[32:33], s[16 + dst * 2:17 + dst * 2], s(16 + src * 2)
-				*(p++) = 0x8ea01010u | (dst << 1) | (src << 9);
+				*(p++) = S_LSHL | 0xa01010u | (dst << 1) | (src << 9);
 
 				// s_sub_u32  s15, 64, s(16 + src * 2)
 				*(p++) = 0x808f10c0u | (src << 9);
 
 				// s_lshr_b64 s[34:35], s[16 + dst * 2:17 + dst * 2], s15
-				*(p++) = 0x8fa20f10u | (dst << 1);
+				*(p++) = S_LSHR | 0xa20f10u | (dst << 1);
 			}
 		}
 		else // p = 1/8
@@ -687,14 +772,14 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			const uint shift = ((opcode < RANDOMX_FREQ_IROR_R) ? inst.y : -inst.y) & 63;
 
 			// s_lshr_b64 s[32:33], s[16 + dst * 2:17 + dst * 2], shift
-			*(p++) = 0x8fa08010u | (dst << 1) | (shift << 8);
+			*(p++) = S_LSHR | 0xa08010u | (dst << 1) | (shift << 8);
 
 			// s_lshl_b64 s[34:35], s[16 + dst * 2:17 + dst * 2], 64 - shift
-			*(p++) = 0x8ea28010u | (dst << 1) | ((64 - shift) << 8);
+			*(p++) = S_LSHL | 0xa28010u | (dst << 1) | ((64 - shift) << 8);
 		}
 
 		// s_or_b64 s[16 + dst * 2:17 + dst * 2], s[32:33], s[34:35]
-		*(p++) = 0x87902220u | (dst << 17);
+		*(p++) = S_OR | 0x902220u | (dst << 17);
 
 		// 12*7/8 + 8/8 + 4 = 15.5 bytes on average
 		return p;
@@ -705,9 +790,15 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 	{
 		if (src != dst)
 		{
+#if GCN_VERSION >= 15
+			*(p++) = 0xbea00410u | (dst << 1);				// s_mov_b64       s[32:33], s[16 + dst * 2:17 + dst * 2]
+			*(p++) = 0xbe900410u | (src << 1) | (dst << 17);// s_mov_b64       s[16 + dst * 2:17 + dst * 2], s[16 + src * 2:17 + src * 2]
+			*(p++) = 0xbe900420u | (src << 17);				// s_mov_b64       s[16 + src * 2:17 + Src * 2], s[32:33]
+#else
 			*(p++) = 0xbea00110u | (dst << 1);				// s_mov_b64       s[32:33], s[16 + dst * 2:17 + dst * 2]
 			*(p++) = 0xbe900110u | (src << 1) | (dst << 17);// s_mov_b64       s[16 + dst * 2:17 + dst * 2], s[16 + src * 2:17 + src * 2]
 			*(p++) = 0xbe900120u | (src << 17);				// s_mov_b64       s[16 + src * 2:17 + Src * 2], s[32:33]
+#endif
 		}
 
 		// 12*7/8 = 10.5 bytes on average
@@ -718,11 +809,11 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 	if (opcode < RANDOMX_FREQ_FSWAP_R)
 	{
 		// ds_swizzle_b32 v(60 + dst * 2), v(60 + dst * 2) offset:0x8001
-		*(p++) = 0xd87a8001u;
+		*(p++) = DS_SWIZZLE_B32_FSWAP_R;
 		*(p++) = 0x3c00003cu + (dst << 1) + (dst << 25);
 
 		// ds_swizzle_b32 v(61 + dst * 2), v(61 + dst * 2) offset:0x8001
-		*(p++) = 0xd87a8001u;
+		*(p++) = DS_SWIZZLE_B32_FSWAP_R;
 		*(p++) = 0x3d00003du + (dst << 1) + (dst << 25);
 
 		// s_waitcnt lgkmcnt(0)
@@ -736,7 +827,7 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 	if (opcode < RANDOMX_FREQ_FADD_R)
 	{
 		// v_add_f64 v[60 + dst * 2:61 + dst * 2], v[60 + dst * 2:61 + dst * 2], v[52 + src * 2:53 + src * 2]
-		*(p++) = 0xd280003cu + ((dst & 3) << 1);
+		*(p++) = V_ADD_F64 + ((dst & 3) << 1);
 		*(p++) = 0x0002693cu + ((dst & 3) << 1) + ((src & 3) << 10);
 
 		// 8 bytes
@@ -757,7 +848,7 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			p = jit_scratchpad_load2_fp(p, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
 
 			// v_add_f64 v[60 + dst * 2:61 + dst * 2], v[60 + dst * 2:61 + dst * 2], v[28:29]
-			*(p++) = 0xd280003cu + ((dst & 3) << 1);
+			*(p++) = V_ADD_F64 + ((dst & 3) << 1);
 			*(p++) = 0x0002393cu + ((dst & 3) << 1);
 		}
 
@@ -769,7 +860,7 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 	if (opcode < RANDOMX_FREQ_FSUB_R)
 	{
 		// v_add_f64 v[60 + dst * 2:61 + dst * 2], v[60 + dst * 2:61 + dst * 2], -v[52 + src * 2:53 + src * 2]
-		*(p++) = 0xd280003cu + ((dst & 3) << 1);
+		*(p++) = V_ADD_F64 + ((dst & 3) << 1);
 		*(p++) = 0x4002693cu + ((dst & 3) << 1) + ((src & 3) << 10);
 
 		// 8 bytes
@@ -790,7 +881,7 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			p = jit_scratchpad_load2_fp(p, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
 
 			// v_add_f64 v[60 + dst * 2:61 + dst * 2], v[60 + dst * 2:61 + dst * 2], -v[28:29]
-			*(p++) = 0xd280003cu + ((dst & 3) << 1);
+			*(p++) = V_ADD_F64 + ((dst & 3) << 1);
 			*(p++) = 0x4002393cu + ((dst & 3) << 1);
 		}
 
@@ -802,7 +893,7 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 	if (opcode < RANDOMX_FREQ_FSCAL_R)
 	{
 		// v_xor_b32 v(61 + dst * 2), v(61 + dst * 2), v51
-		*(p++) = 0x2a7a673du + ((dst & 3) << 1) + ((dst & 3) << 18);
+		*(p++) = (V_XOR_B32 | 0x7a673du) + ((dst & 3) << 1) + ((dst & 3) << 18);
 
 		// 4 bytes
 		return p;
@@ -812,7 +903,7 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 	if (opcode < RANDOMX_FREQ_FMUL_R)
 	{
 		// v_mul_f64 v[68 + dst * 2:69 + dst * 2], v[68 + dst * 2:69 + dst * 2], v[52 + src * 2:53 + src * 2]
-		*(p++) = 0xd2810044u + ((dst & 3) << 1);
+		*(p++) = V_MUL_F64 + ((dst & 3) << 1);
 		*(p++) = 0x00026944u + ((dst & 3) << 1) + ((src & 3) << 10);
 
 		// 8 bytes
@@ -833,7 +924,11 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 			p = jit_scratchpad_load2_fp(p, prefetch_vgpr_index ? -prefetch_vgpr_index : 28, prefetch_vgpr_index ? vmcnt : 0);
 
 			// s_swappc_b64 s[60:61], s[48 + dst * 2:49 + dst * 2]
+#if GCN_VERSION >= 15
+			*(p++) = 0xbebc2130u + ((dst & 3) << 1);
+#else
 			*(p++) = 0xbebc1e30u + ((dst & 3) << 1);
+#endif
 		}
 
 		// 32 + 4 = 36 bytes
@@ -844,7 +939,11 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 	if (opcode < RANDOMX_FREQ_FSQRT_R)
 	{
 		// s_swappc_b64 s[60:61], s[40 + dst * 2:41 + dst * 2]
+#if GCN_VERSION >= 15
+		*(p++) = 0xbebc2128u + ((dst & 3) << 1);
+#else
 		*(p++) = 0xbebc1e28u + ((dst & 3) << 1);
+#endif
 
 		// 4 bytes
 		return p;
@@ -867,7 +966,7 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		const uint conditionMaskReg = 70 + (mod >> 4);
 
 		// s_and_b32 s14, s(16 + dst * 2), conditionMaskReg
-		*(p++) = 0x860e0010u | (dst << 1) | (conditionMaskReg << 8);
+		*(p++) = S_AND | 0x0e0010u | (dst << 1) | (conditionMaskReg << 8);
 
 		// s_cbranch_scc0 target
 		const int delta = ((last_branch_target - p) - 1);
@@ -883,26 +982,30 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		const uint shift = inst.y & 63;
 		if (shift == 63)
 		{
-			*(p++) = 0x8e0e8110u | (src << 1);		// s_lshl_b32      s14, s(16 + src * 2), 1
-			*(p++) = 0x8f0f9f11u | (src << 1);		// s_lshr_b32      s15, s(17 + src * 2), 31
-			*(p++) = 0x870e0f0eu;					// s_or_b32        s14, s14, s15
-			*(p++) = 0x860e830eu;					// s_and_b32       s14, s14, 3
+			*(p++) = S_LSHL | 0x0e8110u | (src << 1);		// s_lshl_b32      s14, s(16 + src * 2), 1
+			*(p++) = S_LSHR | 0x0f9f11u | (src << 1);		// s_lshr_b32      s15, s(17 + src * 2), 31
+			*(p++) = S_OR | 0x0e0f0eu;					// s_or_b32        s14, s14, s15
+			*(p++) = S_AND | 0x0e830eu;					// s_and_b32       s14, s14, 3
 		}
 		else
 		{
 			// s_bfe_u64 s[14:15], s[16:17], (shift,width=2)
-			*(p++) = 0x938eff10u | (src << 1);
+			*(p++) = S_BFE | 0x8eff10u | (src << 1);
 			*(p++) = shift | (2 << 16);
 		}
 
 		// s_brev_b32 s14, s14
-		*(p++) = 0xbe8e080eu;
-
 		// s_lshr_b32 s66, s14, 30
-		*(p++) = 0x8f429e0eu;
-
 		// s_setreg_b32 hwreg(mode, 2, 2), s66
+#if GCN_VERSION >= 15
+		*(p++) = 0xbe8e0b0eu;
+		*(p++) = 0x90429e0eu;
+		*(p++) = 0xb9c20881u;
+#else
+		*(p++) = 0xbe8e080eu;
+		*(p++) = 0x8f429e0eu;
 		*(p++) = 0xb9420881u;
+#endif
 
 		// 20 bytes
 		return p;
@@ -921,6 +1024,10 @@ __global uint* jit_emit_instruction(__global uint* p, __global uint* last_branch
 		// v28 = offset
 
 #if GCN_VERSION >= 14
+#if GCN_VERSION >= 15
+		// s_waitcnt vmcnt(0)
+		*(p++) = 0xbf8c3f70u;
+#endif
 		// global_store_dwordx2 v28, v[vgpr_id:vgpr_id + 1], s[0:1]
 		*(p++) = 0xdc748000u;
 		*(p++) = 0x0000001cu | (vgpr_id << 8);
@@ -1497,14 +1604,14 @@ __global uint* generate_jit_code(__global uint2* e, __global uint2* p0, __global
 			{
 				// Code size limit exceeded!!!
 				// Jump back to randomx_run kernel
-				*(p++) = 0xbe801d0cu; // s_setpc_b64 s[12:13]
+				*(p++) = S_SETPC_B64_S12_13; // s_setpc_b64 s[12:13]
 				return p;
 			}
 		} while (!done);
 	}
 
 	// Jump back to randomx_run kernel
-	*(p++) = 0xbe801d0cu; // s_setpc_b64 s[12:13]
+	*(p++) = S_SETPC_B64_S12_13; // s_setpc_b64 s[12:13]
 	return p;
 }
 
